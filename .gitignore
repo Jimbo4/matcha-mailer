@@ -1,0 +1,11 @@
+# dati personali e segreti: mai su GitHub
+config.ini
+secrets/
+data/
+*.pdf
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
