@@ -36,6 +36,8 @@ class Config:
     days_mail_3: int
     weekly_limit: int
     reply_lookback_days: int
+    pause_min: float = 5.0
+    pause_max: float = 30.0
 
     @property
     def letter_pdf_link(self) -> str:
@@ -79,6 +81,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         days_mail_3=int(get("sequenza", "giorni_mail_3", "6")),
         weekly_limit=int(get("sequenza", "soglia_settimanale", "20")),
         reply_lookback_days=int(get("sequenza", "giorni_controllo_risposte", "60")),
+        pause_min=float(get("sequenza", "pausa_min_secondi", "5")),
+        pause_max=float(get("sequenza", "pausa_max_secondi", "30")),
     )
     missing = [
         name

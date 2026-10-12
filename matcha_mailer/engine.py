@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import random
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -31,6 +32,20 @@ def render(action: Action, texts: texts_mod.Texts) -> None:
 def problems(action: Action) -> list[str]:
     """Placeholders still to fill by hand (e.g. {numero_coppie})."""
     return texts_mod.missing_placeholders(action.subject + "\n" + action.body)
+
+
+def pause_seconds(cfg, rng: random.Random | None = None) -> float:
+    """Random pause between two sends, so mails never leave in a burst."""
+    lo, hi = sorted((max(0.0, cfg.pause_min), max(0.0, cfg.pause_max)))
+    return (rng or random).uniform(lo, hi)
+
+
+def estimated_minutes(cfg, n: int) -> int:
+    """Rough total time for n sends: average pause between them plus ~3 s per send."""
+    if n <= 0:
+        return 0
+    avg = (cfg.pause_min + cfg.pause_max) / 2
+    return max(1, round(((n - 1) * avg + n * 3) / 60))
 
 
 def sent_this_week(today: date) -> int:

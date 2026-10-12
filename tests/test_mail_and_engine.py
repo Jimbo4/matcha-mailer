@@ -156,3 +156,13 @@ def test_sent_but_funnel_not_updated_is_not_proposed_again(cfg, sheet, monkeypat
     sheet.values.pop()
     again = next(x for x in s.build_plan(TODAY)[0] if x.venue.name == "Bar Uno")
     assert again.kind == "info" and not again.selectable and "Già inviata il 12/10/2026" in again.status
+
+
+def test_pause_between_sends(cfg):
+    import random
+
+    rng = random.Random(1)
+    values = [engine.pause_seconds(cfg, rng) for _ in range(200)]
+    assert min(values) >= 5 and max(values) <= 30 and max(values) - min(values) > 15
+    assert engine.estimated_minutes(cfg, 1) == 1
+    assert engine.estimated_minutes(cfg, 10) == round((9 * 17.5 + 30) / 60)

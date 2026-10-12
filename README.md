@@ -24,7 +24,7 @@ Mailer semi-automatico per contattare i locali partner di [Matcha](https://www.m
 | `50 - curioso` con solo numero fisso | In grigio: da chiamare |
 | `90`, `00`, "TODO: da visitare" | Nessuna azione |
 
-I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Ambrogio. Oltre le 20 mail a settimana il mailer chiede conferma (non blocca). Il limite è in `config.ini`.
+I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Ambrogio. Oltre le 20 mail a settimana il mailer chiede conferma (non blocca). Tra un invio e l'altro fa una pausa casuale di 5-30 secondi, così le mail non partono a raffica. Soglia e pausa si cambiano in `config.ini`.
 
 ### Colonne aggiunte al funnel
 

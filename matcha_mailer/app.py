@@ -8,6 +8,7 @@ import queue
 import smtplib
 import sys
 import threading
+import time
 import traceback
 import tkinter as tk
 import webbrowser
@@ -473,6 +474,8 @@ class App:
         if not messagebox.askyesno(
             "Conferma invio",
             f"Invio {len(sel)} mail da {self.cfg.sender_email}{cc}:\n\n{lines}\n\n"
+            f"Tra un invio e l'altro faccio una pausa casuale di {self.cfg.pause_min:g}-{self.cfg.pause_max:g} secondi: "
+            f"tempo stimato circa {engine.estimated_minutes(self.cfg, len(sel))} minuti. Tieni il mailer aperto.\n\n"
             "Dopo l'invio aggiorno il funnel (righe cercate per nome) e la cronologia. Procedo?",
             parent=self.root,
         ):
@@ -482,7 +485,11 @@ class App:
     def _send_batch(self, sel):
         today = self.today
         bullets, ok, failed = [], 0, []
-        for a in sel:
+        for i, a in enumerate(sel):
+            if i:
+                wait = engine.pause_seconds(self.cfg)
+                self.bg_say(f"Pausa di {round(wait)} secondi prima della prossima mail…")
+                time.sleep(wait)
             try:
                 changes, warn = self.session.send(a, today)
             except Exception as exc:  # noqa: BLE001
