@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import random
+import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
@@ -215,3 +216,54 @@ def describe(changes: list[Change], extra: str = "") -> str:
         parts.append(f'{c.column}: {old} → "{c.new}"')
     text = f"{venue}: " + "; ".join(parts)
     return text + (f" ({extra})" if extra else "")
+
+
+# ------------------------------------------------------------ shared by window and command line
+
+
+def send_batch(session: "Session", actions: list[Action], today: date, log=print, sleep=time.sleep) -> tuple[int, list[str]]:
+    """Sends the given mail actions one by one (random pause in between), updates the funnel
+    and writes one history entry. Returns (sent count, failures)."""
+    bullets, ok, failed = [], 0, []
+    for i, a in enumerate(actions):
+        if i:
+            wait = pause_seconds(session.cfg)
+            log(f"Pausa di {round(wait)} secondi prima della prossima mail…")
+            sleep(wait)
+        try:
+            changes, warn = session.send(a, today)
+        except Exception as exc:  # noqa: BLE001
+            failed.append(f"{a.venue.name}: {exc}")
+            log(f"✗ {a.venue.name}: non inviata ({exc})")
+            continue
+        ok += 1
+        log(f"✓ {a.venue.name}: {a.label} inviata a {a.venue.email}" + (f" ({warn})" if warn else ""))
+        extra = f"{a.label} inviata a {a.venue.email}" + (f"; {warn}" if warn else "")
+        bullets.append(describe(changes, extra) or f"{a.venue.name}: {extra}")
+    try:
+        session.write_history(today, f"Mailer: {ok} mail inviate", bullets)
+        if bullets:
+            log("Cronologia aggiornata.")
+    except Exception as exc:  # noqa: BLE001
+        log(f"Attenzione: cronologia non aggiornata ({exc}). Dettagli in data/invii.csv")
+    return ok, failed
+
+
+def register_whatsapp(session: "Session", action: Action, today: date) -> None:
+    changes = session.mark_whatsapp_sent(action, today)
+    bullet = describe(changes, "WhatsApp con lettera d'intenti inviato") or f"{action.venue.name}: WhatsApp inviato"
+    session.write_history(today, "Mailer: WhatsApp inviato", [bullet])
+
+
+STEP_NOTES = {"stop": "ha chiesto di non essere più contattato", "risposta": "ha risposto, sequenza chiusa"}
+
+
+def close_sequence(session: "Session", venue_name: str, value: str, today: date) -> list[Change]:
+    """Sets 'Mail step' to stop/risposta for a venue (found by name) and logs it."""
+    if value not in STEP_NOTES:
+        raise ValueError("Valore ammesso: stop oppure risposta")
+    changes = session.funnel.update_by_name(venue_name, {"mail_step": value})
+    session.write_history(today, "Mailer: sequenza chiusa",
+                          [describe(changes, STEP_NOTES[value]) or f"{venue_name}: Mail step già \"{value}\""])
+    return changes
+

@@ -48,6 +48,19 @@ Nella colonna "Note" il mailer aggiunge dopo una virgola un frammento tipo "Emai
 5. **Invia selezionate** → riepilogo → conferma.
 6. Per WhatsApp: seleziona il locale, **Apri WhatsApp**, invia dal telefono o dal PC, poi conferma nel mailer così aggiorna il funnel.
 
+## Uso da Claude o da terminale
+
+Gli stessi passaggi della finestra sono disponibili come comandi, così puoi chiedere gli invii a Claude Code aperto in questa cartella sul tuo PC. Le istruzioni e le regole per Claude sono in [`CLAUDE.md`](CLAUDE.md): nessun invio senza la tua conferma dopo l'anteprima.
+
+```
+.venv\Scripts\python -m matcha_mailer verifica
+.venv\Scripts\python -m matcha_mailer stato
+.venv\Scripts\python -m matcha_mailer anteprima "Nome locale"
+.venv\Scripts\python -m matcha_mailer invia "Nome locale"              (anteprima, non invia)
+.venv\Scripts\python -m matcha_mailer invia "Nome locale" --conferma   (invia)
+.venv\Scripts\python -m matcha_mailer password                         (salva la password Aruba, solo tu)
+```
+
 ## Installazione (una volta)
 
 ### 1. File di configurazione
@@ -100,10 +113,13 @@ Tutti i testi, firma compresa, sono in [`testi_email.md`](testi_email.md): il ma
 
 ```
 Matcha Mailer.bat      avvio con doppio clic (installa le librerie la prima volta)
+CLAUDE.md              istruzioni e regole per usare il mailer da Claude
 testi_email.md         testi delle mail, del WhatsApp e firma
 config.example.ini     modello di configurazione
 matcha_mailer/
   app.py               finestra (tkinter)
+  cli.py               comandi da terminale (usati anche da Claude)
+  keychain.py          password Aruba nel portachiavi di Windows
   engine.py            collega funnel, testi, invio e cronologia
   planner.py           regole della sequenza
   funnel.py            lettura e scrittura del foglio, righe per nome

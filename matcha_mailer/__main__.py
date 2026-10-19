@@ -1,3 +1,5 @@
+"""`python -m matcha_mailer` opens the window; `python -m matcha_mailer <comando>` runs the command line."""
+
 import sys
 import traceback
 
@@ -16,15 +18,23 @@ def _fatal(text: str) -> None:
         )
 
 
-try:
-    from matcha_mailer.app import main
-except Exception:  # noqa: BLE001
-    _fatal(traceback.format_exc())
-    raise SystemExit(1)
-
-if __name__ == "__main__":
+def _window() -> None:
+    try:
+        from matcha_mailer.app import main
+    except Exception:  # noqa: BLE001
+        _fatal(traceback.format_exc())
+        raise SystemExit(1)
     try:
         main()
     except Exception:  # noqa: BLE001
         _fatal(traceback.format_exc())
         raise SystemExit(1)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        from matcha_mailer.cli import main as cli_main
+
+        cli_main()
+    else:
+        _window()

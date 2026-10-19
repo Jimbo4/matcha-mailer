@@ -8,7 +8,6 @@ import queue
 import smtplib
 import sys
 import threading
-import time
 import traceback
 import tkinter as tk
 import webbrowser
@@ -16,12 +15,11 @@ from datetime import date
 from tkinter import messagebox, simpledialog, ttk
 
 from matcha_mailer import config as config_mod
-from matcha_mailer import engine, planner
+from matcha_mailer import engine, keychain, planner
 from matcha_mailer.mailbox import Mailbox
 
 ACCENT = "#38A096"
 GREY = "#8A9A9A"
-KEYRING_SERVICE = "matcha-mailer"
 CHECK_ON, CHECK_OFF = "☑", "☐"
 
 config_mod.DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,45 +43,24 @@ def _fix_surrogates(s: str) -> str:
 # ------------------------------------------------------------------ password
 
 
-def _keyring():
-    try:
-        import keyring
-
-        return keyring
-    except Exception:
-        return None
-
-
 def get_password(root, email: str, force_ask: bool = False) -> str | None:
-    kr = _keyring()
-    if kr and not force_ask:
-        try:
-            pw = kr.get_password(KEYRING_SERVICE, email)
-            if pw:
-                return pw
-        except Exception:
-            pass
+    if not force_ask:
+        pw = keychain.get_password(email)
+        if pw:
+            return pw
     pw = simpledialog.askstring(
         "Password Aruba",
         f"Password della casella {email}\n(la salvo nel portachiavi di Windows, non in un file)",
         show="•",
         parent=root,
     )
-    if pw and kr:
-        try:
-            kr.set_password(KEYRING_SERVICE, email, pw)
-        except Exception:
-            pass
+    if pw:
+        keychain.set_password(email, pw)
     return pw
 
 
 def forget_password(email: str) -> None:
-    kr = _keyring()
-    if kr:
-        try:
-            kr.delete_password(KEYRING_SERVICE, email)
-        except Exception:
-            pass
+    keychain.delete_password(email)
 
 
 # ------------------------------------------------------------------ app
@@ -483,29 +460,7 @@ class App:
         self.run_bg(lambda: self._send_batch(sel), f"Invio {len(sel)} mail…", done=self._after_send)
 
     def _send_batch(self, sel):
-        today = self.today
-        bullets, ok, failed = [], 0, []
-        for i, a in enumerate(sel):
-            if i:
-                wait = engine.pause_seconds(self.cfg)
-                self.bg_say(f"Pausa di {round(wait)} secondi prima della prossima mail…")
-                time.sleep(wait)
-            try:
-                changes, warn = self.session.send(a, today)
-            except Exception as exc:  # noqa: BLE001
-                failed.append(f"{a.venue.name}: {exc}")
-                self.bg_say(f"✗ {a.venue.name}: non inviata ({exc})")
-                continue
-            ok += 1
-            self.bg_say(f"✓ {a.venue.name}: {a.label} inviata a {a.venue.email}" + (f" ({warn})" if warn else ""))
-            extra = f"{a.label} inviata a {a.venue.email}" + (f"; {warn}" if warn else "")
-            bullets.append(engine.describe(changes, extra) or f"{a.venue.name}: {extra}")
-        try:
-            self.session.write_history(today, f"Mailer: {ok} mail inviate", bullets)
-            self.bg_say("Cronologia aggiornata.")
-        except Exception as exc:  # noqa: BLE001
-            self.bg_say(f"Attenzione: cronologia non aggiornata ({exc}). Dettagli in data/invii.csv")
-        return ok, failed
+        return engine.send_batch(self.session, sel, self.today, log=self.bg_say)
 
     def _after_send(self, res):
         ok, failed = res
@@ -527,9 +482,7 @@ class App:
         webbrowser.open(planner.whatsapp_link(number, a.body))
         if messagebox.askyesno("WhatsApp", f"Hai inviato il messaggio a {a.venue.name}?\nSe sì, aggiorno funnel e cronologia.", parent=self.root):
             def job():
-                changes = self.session.mark_whatsapp_sent(a, self.today)
-                bullet = engine.describe(changes, "WhatsApp con lettera d'intenti inviato") or f"{a.venue.name}: WhatsApp inviato"
-                self.session.write_history(self.today, "Mailer: WhatsApp inviato", [bullet])
+                engine.register_whatsapp(self.session, a, self.today)
                 return a.venue.name
 
             self.run_bg(job, "Aggiorno il funnel…", done=lambda name: (self.say(f"✓ {name}: WhatsApp registrato"), self.reload()))
