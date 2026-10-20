@@ -131,3 +131,42 @@ def test_missing_signed_count_blocks_send(env, sheet, capsys):
     sheet.values.pop()  # no signed venue: {n_locali} cannot be filled
     assert env["run"]("invia", "Bar Uno", "--conferma") == cli.ERROR
     assert env["mb"].sent == [] and "n_locali" in capsys.readouterr().out
+
+
+@pytest.fixture
+def lost(env):
+    env["sheet"].values.append(["Bar Perso", "Via D 4", "Wagner", "", "02 999", "perso@bar.it", "00 - perso",
+                                "Di persona", "", "Già visitato"])
+    return env
+
+
+def test_lost_venue_explains_how_to_revive(lost, capsys):
+    assert lost["run"]("invia", "Bar Perso", "--conferma") == cli.ERROR
+    out = capsys.readouterr().out
+    assert "00 - perso" in out and "--riattiva" in out and "Già visitato" in out
+    assert lost["mb"].sent == []
+    assert lost["run"]("stato") == 0
+    assert "Bar Perso" not in capsys.readouterr().out
+
+
+def test_lost_venue_revived_on_request(lost, capsys):
+    assert lost["run"]("invia", "Bar Perso", "--riattiva") == cli.NEEDS_CONFIRM
+    out = capsys.readouterr().out
+    assert "Mail 1 · primo contatto (locale perso)" in out and "Probabilità resta 00" in out
+    assert lost["mb"].sent == []
+    assert lost["run"]("invia", "Bar Perso", "--riattiva", "--conferma") == 0
+    assert lost["mb"].sent[0]["To"] == "perso@bar.it"
+    r = row(lost["sheet"], "Bar Perso")
+    assert r[6] == "00 - perso" and r[10] == "1" and r[12] == "23/10/2026"
+    assert "riattivato su richiesta" in lost["history"][0][1][0]
+
+
+def test_riattiva_only_for_named_venues(lost):
+    assert lost["run"]("invia", "Bar Uno", "--riattiva", "--conferma") == 0
+    assert [m["To"] for m in lost["mb"].sent] == ["info@baruno.it"]
+    assert row(lost["sheet"], "Bar Perso")[6:] == ["00 - perso", "Di persona", "", "Già visitato"]
+
+
+def test_venue_not_in_funnel_explains(env, capsys):
+    assert env["run"]("anteprima", "Locale Inesistente") == cli.ERROR
+    assert "non è nel funnel" in capsys.readouterr().out

@@ -16,6 +16,8 @@ Il mailer funziona **solo sul PC di Jacopo**: lì ci sono la password Aruba (nel
 8. **Risposte dei locali:** le legge Jacopo. Quando ti dice l'esito, chiudi la sequenza con `segna` e fai le altre modifiche al funnel che ti chiede.
 9. **Testi:** cambia `testi_email.md` solo su richiesta di Jacopo. Per modificare una sola mail usa `--oggetto` e `--testo-file`, senza toccare il file dei testi.
 10. **Come rispondere a Jacopo:** in italiano, sintetico, con tabelle quando servono, senza trattino lungo. Prima di iniziare dichiara il piano in una riga e segnala subito ostacoli o cambi di piano.
+11. **Se manca qualcosa, spiega le operazioni da fare.** Quando un comando si ferma perché manca qualcosa (installazione, `.venv`, `config.ini`, credenziali, password, dati nel funnel, locale fuori sequenza), non fermarti a "manca X": dai a Jacopo l'elenco ordinato delle operazioni, per ognuna chi la fa (tu o lui), dove e come verificarla. Fai subito quelle che puoi fare tu senza violare le altre regole, poi chiedi l'ok per il resto. Il mailer stesso spiega il motivo nei messaggi d'errore: riportalo e completalo.
+12. **Locali `00 - perso`:** il mailer li salta. Si ricontattano solo se Jacopo lo chiede per quel locale: allora aggiungi `--riattiva` ad `anteprima`, `prova` e `invia`. Non usarlo di tua iniziativa e non per gruppi di locali non nominati. La Probabilità resta `00`: non cambiarla a meno che Jacopo non lo chieda.
 
 ## Prerequisiti
 
@@ -52,6 +54,7 @@ Senza comando (`python -m matcha_mailer`) si apre la finestra con le spunte: è 
 | `prova "Locale"` | Invia la mail solo a jacopo@matchadating.it, con "[PROVA]" nell'oggetto | Solo una mail a Jacopo |
 | `invia "Locale" ["Altro locale" ...]` | Senza `--conferma`: anteprima e riepilogo, niente invii | No |
 | `invia ... --conferma` | Invia, salva la copia in Posta inviata, aggiorna funnel e cronologia | Sì |
+| `anteprima`/`prova`/`invia "Locale" --riattiva` | Tratta i locali `00 - perso` indicati come `10 - nuovo` (solo su richiesta di Jacopo) | Come il comando senza opzione |
 | `whatsapp "Locale" [--apri]` | Testo e link WhatsApp pronti (Jacopo invia dal telefono) | No |
 | `whatsapp "Locale" --inviato` | Registra il WhatsApp inviato in funnel e cronologia | Sì |
 | `segna "Locale" risposta\|stop [--conferma]` | Chiude la sequenza del locale | Sì, con `--conferma` |
@@ -67,7 +70,7 @@ Codici di uscita: `0` fatto, `1` errore (leggi il messaggio), `2` niente fatto p
 
 **"Manda la mail a [locale]"**
 1. `verifica`, se non l'hai già fatto in questa sessione.
-2. `invia "[locale]"` senza `--conferma`. Se il locale non ha azioni oggi, spiega a Jacopo il motivo che il comando riporta.
+2. `invia "[locale]"` senza `--conferma`. Se il locale non ha azioni oggi, riporta a Jacopo il motivo e le operazioni che il comando indica (regola 11). Se è `00 - perso`, chiedigli se vuole ricontattarlo: con il suo sì rilancia con `--riattiva`.
 3. Mostra a Jacopo l'anteprima completa. Se ci sono parti tra graffe da completare, chiedigli i valori.
 4. Aspetta l'ok esplicito.
 5. `invia "[locale]" --conferma` con le eventuali `--valore`.
@@ -84,7 +87,9 @@ Codici di uscita: `0` fatto, `1` errore (leggi il messaggio), `2` niente fatto p
 
 **"Mi ha risposto [locale]"**: chiedi l'esito se non è chiaro. Poi `segna "[locale]" risposta --conferma` (o `stop` se ha chiesto di non essere più contattato) e le altre modifiche al funnel che Jacopo chiede (ad esempio Probabilità "50 - curioso").
 
-**Un locale non compare**: il mailer considera solo i locali con Probabilità `10 - nuovo` (con mail, non "TODO: da visitare") o `50 - curioso`. Spiega a Jacopo cosa manca nella riga.
+**Un locale non compare**: il mailer considera i locali con Probabilità `10 - nuovo` (con mail, non "TODO: da visitare"), `50 - curioso` e, solo su richiesta, `00 - perso`. Il messaggio d'errore dice il motivo e cosa fare: riportalo a Jacopo come elenco di operazioni (regola 11).
+
+**"Riscrivi a [locale perso]"**: `invia "[locale]" --riattiva` senza `--conferma`, anteprima a Jacopo, ok, poi con `--conferma`. Probabilità resta `00`; Mail 2 e 3 seguono da sole.
 
 ## Regole della sequenza
 
@@ -97,7 +102,8 @@ Codici di uscita: `0` fatto, `1` errore (leggi il messaggio), `2` niente fatto p
 | `50 - curioso` con mail | Mail 4 con la lettera d'intenti in PDF |
 | `50 - curioso` senza mail, con cellulare | WhatsApp con link alla lettera |
 | `50 - curioso` con solo numero fisso | Nessuna: da chiamare |
-| `90`, `00`, Mail step `3`, `4`, `WA`, `stop`, `risposta` | Nessuna |
+| `00 - perso`, con mail, non "TODO: da visitare", su richiesta di Jacopo (`--riattiva` o spunta nella finestra) | Come `10 - nuovo`: Mail 1, poi Mail 2 e 3 da "Mail step". Probabilità resta `00` |
+| `90`, `00` senza richiesta, Mail step `3`, `4`, `WA`, `stop`, `risposta` | Nessuna |
 
 Colonne del mailer nel funnel: `Mail step`, `Mail ultimo invio`, `Mail prossimo invio`, `Mail thread` (identificativo tecnico della mail 1, non toccarlo). In "Note" il mailer aggiunge "Email N inviata il gg/mm/aaaa" dopo una virgola e sostituisce il proprio frammento precedente.
 
@@ -123,7 +129,10 @@ Tutti i testi e la firma sono in `testi_email.md`, letto a ogni comando; in cima
 | "Manca credentials.json" | Jacopo segue il README, sezione "Accesso a Google" |
 | Si apre il browser di Google | Normale al primo uso o a token scaduto (ogni 7 giorni in modalità test): Jacopo fa l'accesso |
 | "più righe con lo stesso nome" | Nel funnel ci sono due righe con lo stesso nome: chiedi a Jacopo quale tenere, il mailer non scrive finché non sono distinte |
-| "nessuna azione da fare oggi" | Il locale è in attesa (vedi la data) o fuori sequenza: riporta il motivo |
+| "nessuna azione da fare oggi" | Il locale è in attesa (vedi la data) o fuori sequenza: riporta motivo e operazioni indicate dal messaggio |
+| "è segnato \"00 - perso\"" | Chiedi a Jacopo se vuole ricontattarlo; se sì, `--riattiva` |
+| `.venv` mancante (il comando python non parte) | Jacopo fa doppio clic su `Matcha Mailer.bat` una volta (crea `.venv` e installa le librerie) |
+| "Ho creato config.ini dal modello" / "In config.ini mancano" | Inserisci gli ID dei file Drive (parte dell'URL tra `/d/` e `/edit`): funnel, cronologia, lettera_intenti_v2. Puoi farlo tu se hai accesso a Drive, poi rilancia `verifica` |
 | "inviata ma funnel NON aggiornato" | La mail è partita: con l'ok di Jacopo aggiorna a mano la riga (per nome) con i valori che il mailer avrebbe scritto, e aggiungi una voce alla cronologia |
 | "copia in Inviati non salvata" | La mail è partita: avvisa Jacopo, non reinviarla |
 | Login Aruba rifiutato | Password cambiata: Jacopo riesegue `password` |

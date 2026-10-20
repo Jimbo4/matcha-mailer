@@ -22,7 +22,19 @@ Mailer semi-automatico per contattare i locali partner di [Matcha](https://www.m
 | `50 - curioso` con mail | Mail 4 con la lettera d'intenti in PDF (esportata dal Doc a ogni invio, quindi sempre aggiornata) |
 | `50 - curioso` senza mail, con cellulare | WhatsApp con link alla lettera |
 | `50 - curioso` con solo numero fisso | In grigio: da chiamare |
-| `90`, `00`, "TODO: da visitare" | Nessuna azione |
+| `00 - perso`, con mail, non "TODO: da visitare", su tua richiesta | Come `10 - nuovo`: Mail 1, poi Mail 2 e Mail 3. Probabilità resta `00` |
+| `90`, `00` (senza richiesta), "TODO: da visitare" | Nessuna azione |
+
+### Ricontattare un locale perso
+
+Di norma il mailer salta i locali `00 - perso`. Se vuoi scrivere comunque a uno di loro:
+
+- **finestra:** spunta "Mostra anche i persi" in alto. I locali persi con una mail compaiono con la Mail 1 non spuntata: spunta solo quelli da ricontattare ("Seleziona tutte" non li include);
+- **comandi:** aggiungi `--riattiva`, ad esempio `invia "Nome locale" --riattiva`. Vale solo per i locali indicati.
+
+Nel funnel la Probabilità resta `00 - perso`; la sequenza prosegue da sola con Mail 2 e Mail 3 grazie a "Mail step", e le risposte vengono controllate come per gli altri. La cronologia segna "locale 00 - perso riattivato su richiesta".
+
+Quando un locale non ha azioni, il mailer spiega il motivo e cosa fare (ad esempio: aggiungere la mail nel funnel, usare `--riattiva`, svuotare "Mail step").
 
 I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Ambrogio. Oltre le 20 mail a settimana il mailer chiede conferma (non blocca). Tra un invio e l'altro fa una pausa casuale di 5-30 secondi, così le mail non partono a raffica. Soglia e pausa si cambiano in `config.ini`.
 
@@ -58,6 +70,7 @@ Gli stessi passaggi della finestra sono disponibili come comandi, così puoi chi
 .venv\Scripts\python -m matcha_mailer anteprima "Nome locale"
 .venv\Scripts\python -m matcha_mailer invia "Nome locale"              (anteprima, non invia)
 .venv\Scripts\python -m matcha_mailer invia "Nome locale" --conferma   (invia)
+.venv\Scripts\python -m matcha_mailer invia "Locale perso" --riattiva    (locale 00 - perso, su tua richiesta)
 .venv\Scripts\python -m matcha_mailer password                         (salva la password Aruba, solo tu)
 ```
 

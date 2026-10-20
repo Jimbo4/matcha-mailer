@@ -77,3 +77,38 @@ def test_next_due_and_note():
     n3 = planner.merge_note(n2, "Email 3 (break up) inviata il 26/10/2026")
     assert n3.endswith("in attesa, Email 3 (break up) inviata il 26/10/2026")
     assert planner.merge_note("", "Email 1 inviata il 12/10/2026") == "Email 1 inviata il 12/10/2026"
+
+
+def test_lost_venues_only_on_request():
+    vs = [
+        Venue("Perso Bar", email="p@p.it", probability="00 - perso", last_action="Di persona"),
+        Venue("Perso senza mail", probability="00 - perso"),
+        Venue("Perso stop", email="s@s.it", probability="00 - perso", mail_step="stop"),
+        Venue("Perso in corso", email="c@c.it", probability="00 - perso", mail_step="1", mail_next="12/10/2026"),
+        Venue("Perso risposto", email="r@r.it", probability="00 - perso", mail_step="2", mail_next="01/10/2026"),
+    ]
+    k = kinds(planner.plan(vs, TODAY, replied={"perso risposto"}))
+    assert "Perso Bar" not in k  # never proposed without a request
+    assert k["Perso in corso"] == ("mail2", True)  # already revived: the sequence goes on
+    assert k["Perso risposto"] == ("info", False)
+
+    acts = planner.plan(vs, TODAY, revive={"perso BAR"})
+    a = next(a for a in acts if a.venue.name == "Perso Bar")
+    assert (a.kind, a.selectable, a.selected, a.lost) == ("mail1", True, True, True)
+    assert a.label.endswith("(locale perso)")
+    assert "Perso senza mail" not in kinds(acts) and "Perso stop" not in kinds(acts)
+
+    shown = planner.plan(vs, TODAY, show_lost=True)
+    a = next(a for a in shown if a.venue.name == "Perso Bar")
+    assert (a.kind, a.selectable, a.selected) == ("mail1", True, False)  # listed, never pre-selected
+
+
+def test_explain_says_what_to_do():
+    lost = Venue("Perso", email="p@p.it", probability="00 - perso", notes="Già visitato")
+    assert "--riattiva" in planner.explain(lost) and "Già visitato" in planner.explain(lost)
+    assert "manca la mail" in planner.explain(Venue("X", probability="00 - perso"))
+    assert "manca la mail" in planner.explain(Venue("X", probability="10 - nuovo"))
+    assert "TODO" in planner.explain(Venue("X", email="x@x.it", probability="10 - nuovo", last_action="TODO: da visitare"))
+    assert "stop" in planner.explain(Venue("X", email="x@x.it", probability="10 - nuovo", mail_step="stop"))
+    assert "firmato" in planner.explain(Venue("X", email="x@x.it", probability="90 - firmato intento"))
+    assert "10 - nuovo" in planner.explain(Venue("X", email="x@x.it", probability=""))

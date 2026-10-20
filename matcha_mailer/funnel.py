@@ -10,12 +10,11 @@ Safety rules:
 
 from __future__ import annotations
 
-import unicodedata
 from dataclasses import dataclass
 
 from gspread.utils import rowcol_to_a1
 
-from matcha_mailer.planner import Venue
+from matcha_mailer.planner import Venue, norm  # noqa: F401  (norm re-exported)
 
 COLUMNS = {
     "name": "Nome attività",
@@ -38,12 +37,6 @@ MAILER_COLUMNS = ["mail_step", "mail_last_sent", "mail_next", "mail_thread"]
 
 class FunnelError(Exception):
     pass
-
-
-def norm(s: str) -> str:
-    s = unicodedata.normalize("NFKD", s or "")
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
-    return " ".join(s.casefold().split())
 
 
 @dataclass

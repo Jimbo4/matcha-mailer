@@ -5,6 +5,7 @@
     python -m matcha_mailer anteprima "N'Ombra de Vin"
     python -m matcha_mailer prova "N'Ombra de Vin"
     python -m matcha_mailer invia "N'Ombra de Vin" [--conferma]
+    python -m matcha_mailer invia "Locale perso" --riattiva [--conferma]   (solo su richiesta di Jacopo)
     python -m matcha_mailer whatsapp "Nuova Posteria Milanese" [--inviato]
     python -m matcha_mailer segna "N'Ombra de Vin" risposta|stop [--conferma]
     python -m matcha_mailer password
@@ -56,23 +57,46 @@ def _connect(cfg, need_mailbox: bool):
     return session
 
 
-def _find(actions, name: str, selectable_only: bool = True):
+def _find(actions, name: str, selectable_only: bool = True, venues=None, revived: bool = False):
+    """Finds the action for a venue. When there is none, explains why and what to do (venues = funnel rows)."""
     target = norm(name)
     pool = [a for a in actions if a.selectable] if selectable_only else actions
     exact = [a for a in pool if norm(a.venue.name) == target]
     if len(exact) == 1:
         return exact[0]
     if len(exact) > 1:
-        raise CliError(f"'{name}': più righe con lo stesso nome nel funnel, non procedo")
+        raise CliError(f"'{name}': più righe con lo stesso nome nel funnel, non procedo. "
+                       "Rinomina o elimina una delle due righe nel funnel, poi rilancia.")
     waiting = [a for a in actions if not a.selectable and norm(a.venue.name) == target]
     if waiting:
         raise CliError(f"'{waiting[0].venue.name}': nessuna azione da fare oggi ({waiting[0].status})")
-    similar = sorted({a.venue.name for a in actions if target and target in norm(a.venue.name)})
+    rows = [v for v in (venues or []) if norm(v.name) == target]
+    if len(rows) > 1:
+        raise CliError(f"'{name}': più righe con lo stesso nome nel funnel, non procedo. "
+                       "Rinomina o elimina una delle due righe nel funnel, poi rilancia.")
+    if rows:
+        raise CliError(f"'{rows[0].name}': nessuna azione da fare oggi: {planner.explain(rows[0], revived)}")
+    names = {v.name for v in venues} if venues else {a.venue.name for a in actions}
+    similar = sorted(n for n in names if target and target in norm(n))
     hint = f" Forse intendevi: {', '.join(similar)}." if similar else ""
+    if venues:
+        raise CliError(
+            f"'{name}' non è nel funnel.{hint} Se è un locale nuovo, aggiungi una riga nel funnel con "
+            "Nome attività, Zona, Mail e Probabilità \"10 - nuovo\", poi rilancia."
+        )
     raise CliError(
         f"'{name}' non ha azioni da fare oggi.{hint} Usa 'stato' per l'elenco. "
         "Se il locale è nel funnel ma non compare, controlla Probabilità (10 o 50), Mail e Ultima azione."
     )
+
+
+def _plan(session, ctx, names=(), riattiva: bool = False):
+    revive = set(names) if riattiva else None
+    return session.build_plan(ctx["today"], revive=revive)
+
+
+def _locate(session, actions, name: str, riattiva: bool = False):
+    return _find(actions, name, venues=getattr(session, "venues", None), revived=riattiva)
 
 
 def _apply_overrides(action, values: list[str], subject: str | None, body_file: str | None) -> None:
@@ -114,6 +138,8 @@ def _print_preview(session, a) -> None:
         _out("-" * 60)
         _out(a.body)
     _out("-" * 60)
+    if a.lost:
+        _out("Nota: nel funnel il locale è \"00 - perso\", riattivato su richiesta di Jacopo. Probabilità resta 00.")
     missing = engine.problems(a)
     if missing:
         _out("DA COMPLETARE prima dell'invio: " + ", ".join("{" + m + "}" for m in missing)
@@ -191,8 +217,8 @@ def cmd_stato(args, ctx) -> int:
 
 def cmd_anteprima(args, ctx) -> int:
     session = ctx["connect"](ctx["cfg"], need_mailbox=False)
-    actions, _ = session.build_plan(ctx["today"])
-    a = _find(actions, args.locale)
+    actions, _ = _plan(session, ctx, [args.locale], args.riattiva)
+    a = _locate(session, actions, args.locale, args.riattiva)
     _apply_overrides(a, args.valore, args.oggetto, args.testo_file)
     _print_preview(session, a)
     return OK
@@ -200,8 +226,8 @@ def cmd_anteprima(args, ctx) -> int:
 
 def cmd_prova(args, ctx) -> int:
     session = ctx["connect"](ctx["cfg"], need_mailbox=True)
-    actions, _ = session.build_plan(ctx["today"])
-    a = _find(actions, args.locale)
+    actions, _ = _plan(session, ctx, [args.locale], args.riattiva)
+    a = _locate(session, actions, args.locale, args.riattiva)
     if not a.is_mail:
         raise CliError("La prova vale solo per le mail")
     _apply_overrides(a, args.valore, args.oggetto, args.testo_file)
@@ -217,10 +243,10 @@ def cmd_invia(args, ctx) -> int:
     if (args.oggetto or args.testo_file) and len(args.locali) != 1:
         raise CliError("--oggetto e --testo-file si usano con un solo locale alla volta")
     session = ctx["connect"](cfg, need_mailbox=bool(args.conferma))
-    actions, warnings = session.build_plan(ctx["today"])
+    actions, warnings = _plan(session, ctx, args.locali, args.riattiva)
     chosen = []
     for name in args.locali:
-        a = _find(actions, name)
+        a = _locate(session, actions, name, args.riattiva)
         if not a.is_mail:
             raise CliError(f"'{a.venue.name}': l'azione è WhatsApp, usa il comando whatsapp")
         if a in chosen:
@@ -260,7 +286,7 @@ def cmd_invia(args, ctx) -> int:
 def cmd_whatsapp(args, ctx) -> int:
     session = ctx["connect"](ctx["cfg"], need_mailbox=False)
     actions, _ = session.build_plan(ctx["today"])
-    a = _find(actions, args.locale)
+    a = _locate(session, actions, args.locale)
     if a.kind != "whatsapp":
         raise CliError(f"'{a.venue.name}': l'azione di oggi è {a.label}, non WhatsApp")
     _apply_overrides(a, args.valore, None, args.testo_file)
@@ -328,14 +354,20 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--oggetto", help="oggetto modificato (un solo locale)")
         sp.add_argument("--testo-file", help="file UTF-8 con il testo modificato (un solo locale)")
 
+    def riattiva(sp):
+        sp.add_argument("--riattiva", action="store_true",
+                        help="tratta i locali \"00 - perso\" indicati come \"10 - nuovo\" (solo su richiesta di Jacopo)")
+
     s = sub.add_parser("anteprima", help="mostra la mail o il WhatsApp di un locale")
     s.add_argument("locale")
     overrides(s)
+    riattiva(s)
     s.set_defaults(fn=cmd_anteprima)
 
     s = sub.add_parser("prova", help="invia la mail di un locale solo a te stesso")
     s.add_argument("locale")
     overrides(s)
+    riattiva(s)
     s.set_defaults(fn=cmd_prova)
 
     s = sub.add_parser("invia", help="invia le mail ai locali indicati (serve --conferma)")
@@ -343,6 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
     overrides(s)
     s.add_argument("--conferma", action="store_true", help="invia davvero")
     s.add_argument("--oltre-soglia", action="store_true", help="consente di superare la soglia settimanale")
+    riattiva(s)
     s.set_defaults(fn=cmd_invia)
 
     s = sub.add_parser("whatsapp", help="link WhatsApp con testo pronto; --inviato per registrarlo")

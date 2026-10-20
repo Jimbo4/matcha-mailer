@@ -53,7 +53,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         if CONFIG_EXAMPLE.exists():
             shutil.copy(CONFIG_EXAMPLE, path)
         raise ConfigMissing(
-            f"Ho creato {path.name} dal modello: completalo con gli ID di Drive e riapri il mailer."
+            f"Ho creato {path.name} dal modello. Aprilo e inserisci gli ID dei tre file Drive (funnel, cronologia, "
+            "lettera_intenti_v2: la parte dell'URL tra /d/ e /edit), poi riapri il mailer. Dettagli nel README, Installazione."
         )
     cp = configparser.ConfigParser(inline_comment_prefixes=(";",))
     cp.read(path, encoding="utf-8")
@@ -95,5 +96,8 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         if not value or value.startswith("<")
     ]
     if missing:
-        raise ConfigMissing("In config.ini mancano: " + ", ".join(missing))
+        raise ConfigMissing(
+            "In config.ini mancano: " + ", ".join(missing)
+            + ". Apri config.ini e sostituisci i valori tra < > (per i file Drive: la parte dell'URL tra /d/ e /edit)."
+        )
     return cfg

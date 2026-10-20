@@ -6,11 +6,14 @@ Rules (see README):
   otherwise WhatsApp if there is a mobile number, otherwise a reminder to call.
 - Anyone who replied (detected in the inbox) leaves the sequence: Jacopo reads the reply.
 - "Mail step" = stop / risposta / 3 / 4 / WA means nothing else is sent.
+- "00 - perso" is skipped unless Jacopo asks for it (revive / show_lost): then it follows the
+  same cold sequence as "10 - nuovo". Its Probabilità stays "00"; Mail 2 and 3 follow from "Mail step".
 """
 
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from urllib.parse import quote
@@ -74,8 +77,14 @@ class Action:
     edited: bool = False
 
     @property
+    def lost(self) -> bool:
+        """Venue marked "00 - perso" in the funnel, contacted only because Jacopo asked for it."""
+        return self.venue.prob_code == "00"
+
+    @property
     def label(self) -> str:
-        return ACTION_LABEL.get(self.kind, "")
+        base = ACTION_LABEL.get(self.kind, "")
+        return f"{base} (locale perso)" if base and self.lost else base
 
     @property
     def is_mail(self) -> bool:
@@ -83,6 +92,13 @@ class Action:
 
 
 # ------------------------------------------------------------------ helpers
+
+
+def norm(s: str) -> str:
+    """Case, accent and space insensitive key used to match venue names."""
+    s = unicodedata.normalize("NFKD", s or "")
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return " ".join(s.casefold().split())
 
 
 def first_name(contact: str) -> str:
@@ -142,14 +158,37 @@ def base_values(v: Venue, today: date, signed_count: int, letter_link: str) -> d
 # ------------------------------------------------------------------ planning
 
 
+def _cold_sequence(v: Venue, step: str, today: date, replied: set[str], values: dict[str, str]) -> Action | None:
+    """Mail 1 -> Mail 2 -> Mail 3 for a venue that has an email and is not "TODO: da visitare"."""
+    if v.name.lower() in replied and step in ("1", "2"):
+        return Action(v, "info", "Ha risposto: leggila tu e dimmi come aggiornare il funnel", False, False, values)
+    kind = {"": "mail1", "1": "mail2", "2": "mail3"}.get(step)
+    if not kind:
+        return None
+    if kind != "mail1":
+        due = calendar_it.parse(v.mail_next)
+        if due and due > today:
+            return Action(v, "info", f"{ACTION_LABEL[kind]} dal {calendar_it.fmt(due)}", False, False, values)
+    return Action(v, kind, "Da inviare", True, True, values)
+
+
+def _cold_ok(v: Venue, step: str) -> bool:
+    return bool(v.email.strip()) and not (v.last_action or "").upper().startswith("TODO") and step not in CLOSED_STEPS
+
+
 def plan(
     venues: list[Venue],
     today: date,
     replied: set[str] | None = None,
     letter_link: str = "",
+    revive: set[str] | None = None,
+    show_lost: bool = False,
 ) -> list[Action]:
-    """replied: lower-cased venue names that answered (from the inbox check)."""
+    """replied: lower-cased venue names that answered (from the inbox check).
+    revive: venue names (any case) marked "00 - perso" that Jacopo asked to contact anyway: Mail 1 is proposed
+    and selected. show_lost: every "00 - perso" venue never written to gets a Mail 1, not selected (window)."""
     replied = replied or set()
+    revive = {norm(n) for n in (revive or set())}
     signed = sum(1 for v in venues if v.prob_code == "90")
     actions: list[Action] = []
 
@@ -160,27 +199,21 @@ def plan(
         code = v.prob_code
         values = base_values(v, today, signed, letter_link)
 
-        if code == "10":
-            if not v.email.strip() or (v.last_action or "").upper().startswith("TODO"):
+        if code == "10" or (code == "00" and step in ("1", "2")):
+            # a lost venue already revived keeps going through Mail 2 and Mail 3 by itself
+            if not _cold_ok(v, step):
                 continue
-            if step in CLOSED_STEPS:
+            a = _cold_sequence(v, step, today, replied, values)
+            if a:
+                actions.append(a)
+
+        elif code == "00":
+            if step or not _cold_ok(v, step):
                 continue
-            if v.name.lower() in replied and step in ("1", "2"):
-                actions.append(
-                    Action(v, "info", "Ha risposto: leggila tu e dimmi come aggiornare il funnel", False, False, values)
-                )
-                continue
-            kind = {"": "mail1", "1": "mail2", "2": "mail3"}.get(step)
-            if not kind:
-                continue
-            if kind != "mail1":
-                due = calendar_it.parse(v.mail_next)
-                if due and due > today:
-                    actions.append(
-                        Action(v, "info", f"{ACTION_LABEL[kind]} dal {calendar_it.fmt(due)}", False, False, values)
-                    )
-                    continue
-            actions.append(Action(v, kind, "Da inviare", True, True, values))
+            if norm(v.name) in revive:
+                actions.append(Action(v, "mail1", "Da inviare (locale perso, su tua richiesta)", True, True, values))
+            elif show_lost:
+                actions.append(Action(v, "mail1", "Locale perso: spunta per riattivarlo", True, False, values))
 
         elif code == "50":
             if step in ("4", "wa", "stop", "risposta"):
@@ -193,8 +226,44 @@ def plan(
                 actions.append(Action(v, "info", "Nessuna mail e solo numero fisso: chiama", False, False, values))
 
     order = {"mail1": 1, "mail2": 2, "mail3": 3, "mail4": 0, "whatsapp": 4, "info": 9}
-    actions.sort(key=lambda a: (order.get(a.kind, 9), a.venue.name.lower()))
+    actions.sort(key=lambda a: (order.get(a.kind, 9), a.lost, a.venue.name.lower()))
     return actions
+
+
+STEP_EXPLAIN = {
+    "3": "la sequenza è finita (Mail 3 già inviata)",
+    "4": "la lettera d'intenti è già stata inviata (Mail step 4)",
+    "wa": "la lettera d'intenti è già stata inviata su WhatsApp (Mail step WA)",
+    "stop": "ha chiesto di non essere più contattato (Mail step stop): non va riscritto",
+    "risposta": "ha già risposto (Mail step risposta): la sequenza è chiusa",
+}
+
+
+def explain(v: Venue, revived: bool = False) -> str:
+    """Why a venue has no action today and which operations would give it one, in plain words for Jacopo."""
+    step = (v.mail_step or "").strip().lower()
+    code = v.prob_code
+    prob = (v.probability or "").strip() or "vuota"
+    if step in STEP_EXPLAIN:
+        return f"{STEP_EXPLAIN[step]}. Per ricominciare da capo svuota a mano 'Mail step' nel funnel."
+    if code in ("10", "00") and (v.last_action or "").upper().startswith("TODO"):
+        return ("in 'Ultima azione fatta' c'è \"TODO: da visitare\": il mailer non scrive ai locali da visitare. "
+                "Per scrivergli comunque cambia 'Ultima azione fatta' nel funnel (es. \"Email\"), poi rilancia.")
+    if code in ("10", "00", "50") and not v.email.strip():
+        extra = " Con un cellulare puoi usare WhatsApp solo da \"50 - curioso\"." if code != "50" else ""
+        return (f"nel funnel manca la mail (Probabilità \"{prob}\"). "
+                f"Aggiungila nella colonna 'Mail', poi rilancia.{extra}")
+    if code == "00" and not revived:
+        why = f" Nota nel funnel: \"{v.notes.strip()}\"." if (v.notes or "").strip() else ""
+        return ("è segnato \"00 - perso\" e il mailer lo salta finché non lo chiedi tu." + why +
+                " Per scrivergli comunque: aggiungi --riattiva al comando (nella finestra: spunta "
+                "\"Mostra anche i persi\"). Riceve la Mail 1 e poi il resto della sequenza; Probabilità resta 00.")
+    if code == "90":
+        return "ha già firmato la lettera d'intenti (90): nessuna mail della sequenza."
+    if code not in ("10", "50", "00"):
+        return (f"Probabilità \"{prob}\" non prevista dal mailer. "
+                "Imposta \"10 - nuovo\" (sequenza a freddo) o \"50 - curioso\" (lettera d'intenti), poi rilancia.")
+    return "nessuna regola della sequenza si applica oggi: controlla Probabilità, Mail, Ultima azione e Mail step."
 
 
 def next_due(kind: str, sent_on: date, days_mail_2: int, days_mail_3: int) -> str:

@@ -78,6 +78,7 @@ class App:
         self._loaded = ("", "")
         self.busy = False
         self.today = date.today()
+        self._shown_lost = False
 
         root.title("Matcha Mailer")
         root.geometry("1280x800")
@@ -109,6 +110,10 @@ class App:
         ttk.Label(top, text="  mailer locali", style="Muted.TLabel").pack(side="left", pady=(6, 0))
         self.btn_reload = ttk.Button(top, text="Aggiorna", command=self.reload)
         self.btn_reload.pack(side="right")
+        # "00 - perso" venues are listed only on request, never selected by default
+        self.show_lost = tk.BooleanVar(value=False)
+        self.chk_lost = ttk.Checkbutton(top, text="Mostra anche i persi", variable=self.show_lost, command=self.reload)
+        self.chk_lost.pack(side="right", padx=(0, 12))
         self.week_lbl = ttk.Label(top, text="", style="Muted.TLabel")
         self.week_lbl.pack(side="right", padx=12)
         self.status = ttk.Label(self.root, text="", padding=(14, 0), style="Muted.TLabel")
@@ -195,7 +200,7 @@ class App:
         self.busy = busy
         self.status.configure(text=text)
         state = "disabled" if busy else "normal"
-        for b in (self.btn_send, self.btn_reload, self.btn_test, self.btn_wa, self.btn_reset):
+        for b in (self.btn_send, self.btn_reload, self.btn_test, self.btn_wa, self.btn_reset, self.chk_lost):
             b.configure(state=state)
         self.root.configure(cursor="watch" if busy else "")
         if not busy:
@@ -257,6 +262,7 @@ class App:
             self.status.configure(text="Serve la password della casella per continuare. Premi Aggiorna.")
             return
         cfg = self.cfg
+        show_lost = self.show_lost.get()
 
         def job():
             self.bg_say("Accesso a Google (la prima volta si apre il browser)…")
@@ -267,32 +273,39 @@ class App:
             session.mailbox = mb
             session.reload_texts()
             self.bg_say("Leggo il funnel e controllo chi ha risposto…")
-            return session, *session.build_plan(self.today)
+            return session, *session.build_plan(self.today, show_lost=show_lost)
 
         self.run_bg(job, "Mi collego…", done=self._loaded_plan)
 
     def reload(self):
         if any(a.edited for a in self.actions):
             if not messagebox.askyesno("Aggiorna", "Hai modificato dei testi in anteprima: aggiornando li perdi. Continuo?", parent=self.root):
+                self.show_lost.set(self._shown_lost)
                 return
         if not self.session:
             self.start()
             return
         session = self.session
+        show_lost = self.show_lost.get()
 
         def job():
             session.reload_texts()
-            return session, *session.build_plan(self.today)
+            return session, *session.build_plan(self.today, show_lost=show_lost)
 
         self.run_bg(job, "Aggiorno…", done=self._loaded_plan)
 
     def _loaded_plan(self, res):
         self.session, self.actions, warnings = res
+        self._shown_lost = self.show_lost.get()
         for w in warnings:
             self.say("Attenzione: " + w)
         self._fill_tree()
-        due = sum(1 for a in self.actions if a.selectable)
-        self.status.configure(text=f"{due} azioni da fare oggi, {len(self.actions) - due} in attesa o da gestire a mano (in grigio)")
+        lost = sum(1 for a in self.actions if a.selectable and a.lost and a.kind == "mail1")
+        due = sum(1 for a in self.actions if a.selectable) - lost
+        text = f"{due} azioni da fare oggi, {len(self.actions) - due - lost} in attesa o da gestire a mano (in grigio)"
+        if lost:
+            text += f", {lost} locali persi riattivabili (spunta solo quelli che vuoi ricontattare)"
+        self.status.configure(text=text)
         self.say("Pronto.")
 
     # ------------------------------------------------------------ table
@@ -327,7 +340,7 @@ class App:
 
     def _select_all(self, value: bool):
         for iid, a in self.by_iid.items():
-            if a.selectable and a.kind != "whatsapp":
+            if a.selectable and a.kind != "whatsapp" and not (a.lost and a.kind == "mail1"):
                 a.selected = value
                 self.tree.item(iid, values=self._row(a))
         self._refresh_buttons()
@@ -448,6 +461,10 @@ class App:
             return
         lines = "\n".join(f"• {a.venue.name}: {a.label} → {a.venue.email}" for a in sel)
         cc = f" (in copia {', '.join(self.cfg.cc)})" if self.cfg.cc else ""
+        n_lost = sum(1 for a in sel if a.lost)
+        if n_lost:
+            lines += (f"\n\n{n_lost} di questi locali sono segnati \"00 - perso\" nel funnel: "
+                      "ricevono la sequenza a freddo, Probabilità resta 00.")
         if not messagebox.askyesno(
             "Conferma invio",
             f"Invio {len(sel)} mail da {self.cfg.sender_email}{cc}:\n\n{lines}\n\n"

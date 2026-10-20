@@ -91,6 +91,7 @@ class Session:
     texts: texts_mod.Texts
     mailbox: Mailbox | None = None
     _letter: bytes | None = field(default=None, repr=False)
+    venues: list = field(default_factory=list, repr=False)  # last funnel read, used to explain missing actions
 
     @classmethod
     def connect(cls, cfg: config_mod.Config) -> "Session":
@@ -104,24 +105,28 @@ class Session:
         self.texts = texts_mod.load_texts(config_mod.TEXTS_PATH)
 
     # ----------------------------------------------------------- planning
-    def build_plan(self, today: date) -> tuple[list[Action], list[str]]:
+    def build_plan(
+        self, today: date, revive: set[str] | None = None, show_lost: bool = False
+    ) -> tuple[list[Action], list[str]]:
+        """revive / show_lost: see planner.plan ("00 - perso" venues only on Jacopo's request)."""
         warnings: list[str] = []
         missing = self.funnel.missing_mailer_columns()
         if missing:
             warnings.append("Nel funnel mancano le colonne: " + ", ".join(missing))
         venues = self.funnel.load()
+        self.venues = venues
         replied: set[str] = set()
         if self.mailbox:
             candidates = [
                 (v.name, v.email, v.mail_thread)
                 for v in venues
-                if v.prob_code == "10" and (v.mail_step or "").strip() in ("1", "2")
+                if v.prob_code in ("10", "00") and (v.mail_step or "").strip() in ("1", "2")
             ]
             try:
                 replied = self.mailbox.replied_venues(candidates, today)
             except Exception as exc:
                 warnings.append(f"Controllo risposte non riuscito ({exc}): i follow up restano da verificare a mano")
-        actions = planner.plan(venues, today, replied, self.cfg.letter_pdf_link)
+        actions = planner.plan(venues, today, replied, self.cfg.letter_pdf_link, revive, show_lost)
         sent = already_sent()
         for a in actions:
             when = sent.get((a.venue.name.lower(), a.kind))
@@ -239,6 +244,8 @@ def send_batch(session: "Session", actions: list[Action], today: date, log=print
         ok += 1
         log(f"✓ {a.venue.name}: {a.label} inviata a {a.venue.email}" + (f" ({warn})" if warn else ""))
         extra = f"{a.label} inviata a {a.venue.email}" + (f"; {warn}" if warn else "")
+        if a.lost and a.kind == "mail1":
+            extra += "; locale \"00 - perso\" riattivato su richiesta, Probabilità invariata"
         bullets.append(describe(changes, extra) or f"{a.venue.name}: {extra}")
     try:
         session.write_history(today, f"Mailer: {ok} mail inviate", bullets)
