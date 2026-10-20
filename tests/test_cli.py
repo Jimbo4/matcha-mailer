@@ -70,7 +70,7 @@ def test_invia_con_conferma(env, capsys):
     assert env["run"]("invia", "Bar Uno", "--conferma") == 0
     assert len(env["mb"].sent) == 1 and env["mb"].sent[0]["To"] == "info@baruno.it"
     r = row(env["sheet"], "Bar Uno")
-    assert r[7] == "Email 1" and r[10] == "1" and r[12] == "23/10/2026"
+    assert r[7] == "Email automatica 1" and r[10] == "1" and r[12] == "23/10/2026"
     assert env["history"] and env["history"][0][0] == "Mailer: 1 mail inviate"
 
 

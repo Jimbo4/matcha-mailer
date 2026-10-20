@@ -49,7 +49,15 @@ I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Am
 
 Per togliere a mano un locale dalla sequenza basta scrivere `stop` o `risposta` in "Mail step".
 
-Nella colonna "Note" il mailer aggiunge dopo una virgola un frammento tipo "Email 1 inviata il 12/10/2026" e sostituisce il frammento precedente del mailer, senza toccare il resto della nota.
+Nelle colonne già esistenti il mailer scrive:
+
+| Colonna | Cosa scrive |
+|---|---|
+| Ultima azione fatta | `Email automatica 1`, `Email automatica 2`, `Email automatica 3 (break up)`, `Email automatica lettera d'intenti`, `WhatsApp automatico lettera d'intenti`. Sono nel menu a tendina della colonna insieme ai valori manuali (Di persona, Chiamata, Email, Instagram, Lettera firmata, TODO: da visitare) |
+| Last contacted | Data dell'invio |
+| Note | Dopo una virgola un frammento tipo "Email automatica 1 inviata il 12/10/2026", che sostituisce il frammento precedente del mailer senza toccare il resto della nota |
+
+Se si cambiano questi valori nel codice (`LAST_ACTION_VALUE` in `planner.py`), vanno aggiunti anche al menu a tendina di "Ultima azione fatta", altrimenti il foglio li segna come non validi.
 
 ## Uso quotidiano
 
@@ -76,42 +84,92 @@ Gli stessi passaggi della finestra sono disponibili come comandi, così puoi chi
 
 ## Installazione (una volta)
 
-### 1. File di configurazione
+Chi fa cosa:
 
-Al primo avvio il mailer crea `config.ini` da `config.example.ini`. Completa gli ID dei tre file Drive (la parte dell'URL tra `/d/` e `/edit`): funnel, cronologia, lettera_intenti_v2. `config.ini` non va su GitHub.
+| Passo | Chi | Perché |
+|---|---|---|
+| 1. Ambiente `.venv` e librerie | Claude (o doppio clic su `Matcha Mailer.bat`) | Nessun dato riservato |
+| 2. `config.ini` con gli ID dei file Drive | Claude, se ha accesso a Google Drive (cerca i file per titolo) | Gli ID non vanno nel repo pubblico, solo in `config.ini` |
+| 3. Client OAuth Google (`secrets\credentials.json`) | Jacopo, guidato da Claude passo passo | Serve accedere a Google Cloud con il tuo account, accettare i termini e scaricare un segreto: Claude non lo fa |
+| 4. Password Aruba nel portachiavi | Jacopo, digitandola in un terminale (Claude può aprirlo con il comando già pronto) | Claude non legge né digita password |
+| 5. Primo accesso Google | Claude lancia il comando, Jacopo accede nel browser che si apre | L'accesso con password lo fa solo Jacopo |
 
-### 2. Accesso a Google
+### 1. Ambiente
 
-Serve un "client OAuth" personale, una volta sola, con l'account che vede il funnel.
+Doppio clic su `Matcha Mailer.bat` oppure:
 
-1. Apri [console.cloud.google.com](https://console.cloud.google.com) e crea un progetto, ad esempio "Matcha Mailer".
-2. In **API e servizi → Libreria** abilita **Google Sheets API**, **Google Docs API** e **Google Drive API**.
-3. In **Google Auth Platform** (schermata consenso OAuth) configura un'app di tipo **Esterno** chiamata "Matcha Mailer" e aggiungi il tuo account Google tra gli **utenti di test**.
-4. In **Client** crea un client OAuth di tipo **App desktop**, scarica il JSON, rinominalo `credentials.json` e mettilo nella cartella `secrets\`.
-5. Al primo avvio si apre il browser: accedi, alla schermata "Google non ha verificato questa app" scegli Avanzate → Vai a Matcha Mailer (è la tua app) e accetta.
+```
+py -3 -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+```
 
-Con l'app in modalità test Google chiede di rifare l'accesso ogni 7 giorni: il mailer riapre il browser da solo.
+### 2. File di configurazione
 
-### 3. Password Aruba
+Al primo avvio il mailer crea `config.ini` da `config.example.ini`. Completa gli ID dei tre file Drive (la parte dell'URL tra `/d/` e `/edit`): "Matcha - Funnel Vendita" (foglio `Sheet1`), "Matcha - Funnel Vendita - cronologia modifiche", "lettera_intenti_v2". `config.ini` non va su GitHub.
 
-Al primo avvio il mailer chiede la password di `jacopo@matchadating.it` e la salva nel portachiavi di Windows (Gestione credenziali), non in un file. Se la cambi, il mailer te la richiede.
+### 3. Accesso a Google: client OAuth
 
-### 4. Collegamento sul desktop (facoltativo)
+Si fa una volta sola, con **il tuo account Google personale** (quello che vede funnel, cronologia e lettera). Circa 10 minuti.
+
+1. **Accesso.** Apri [console.cloud.google.com](https://console.cloud.google.com) e accedi con quell'account. Se è la prima volta, scegli Italia come paese e accetta i termini di servizio.
+2. **Progetto.** In alto a sinistra clic sul selettore dei progetti → **Nuovo progetto**. Nome `Matcha Mailer`, Organizzazione "Nessuna organizzazione" → **Crea**. Quando è pronto, selezionalo dal selettore (il nome deve comparire in alto).
+3. **API.** Apri questi tre link e su ciascuno clic su **Abilita** (controlla che in alto ci sia il progetto Matcha Mailer):
+   - [Google Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)
+   - [Google Docs API](https://console.cloud.google.com/apis/library/docs.googleapis.com)
+   - [Google Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)
+4. **Schermata di consenso.** Apri [Google Auth Platform](https://console.cloud.google.com/auth/overview) → **Inizia** e compila:
+   - Informazioni sull'app: nome `Matcha Mailer`, email di assistenza: il tuo indirizzo → Avanti;
+   - Pubblico: **Esterno** → Avanti;
+   - Dati di contatto: il tuo indirizzo → Avanti;
+   - accetta le norme sui dati utente → **Crea**.
+5. **Utente di test.** Menu a sinistra **Pubblico** → sezione "Utenti di test" → **Aggiungi utenti** → il tuo indirizzo → **Salva**. Lascia lo stato di pubblicazione su "Test".
+6. **Client.** Menu a sinistra **Client** → **Crea client** → Tipo di applicazione **App desktop**, nome `Matcha Mailer` → **Crea**. Nella finestra che si apre clic su **Scarica JSON** subito: il segreto si vede solo ora. Se la chiudi per errore, elimina il client e creane un altro.
+7. **File.** Il file scaricato si chiama `client_secret_....json` ed è in Download oppure sul Desktop (dipende dal browser): se il comando non lo trova, sostituisci `Downloads` con `Desktop`. Spostalo nella cartella del mailer come `secrets\credentials.json`, ad esempio da PowerShell nella cartella del mailer:
+
+   ```
+   New-Item -ItemType Directory -Force secrets
+   Move-Item "$env:USERPROFILE\Downloads\client_secret_*.json" secrets\credentials.json
+   ```
+
+8. **Verifica.** `.venv\Scripts\python -m matcha_mailer verifica` deve dire `OK  secrets/credentials.json`.
+
+### 4. Password Aruba
+
+Il mailer salva la password di `jacopo@matchadating.it` nel portachiavi di Windows (Gestione credenziali), non in un file. In un terminale nella cartella del mailer:
+
+```
+.venv\Scripts\python -m matcha_mailer password
+```
+
+Digita la password (non compare mentre scrivi) e premi Invio: il mailer la prova con Aruba e risponde "Password verificata con Aruba e salvata nel portachiavi di Windows". Se la cambi, rifai questo passo.
+
+### 5. Primo accesso Google
+
+Al primo comando che legge il funnel (`verifica` o `stato`) si apre il browser:
+
+1. scegli il tuo account Google personale;
+2. alla schermata "Google non ha verificato questa app" clic su **Avanzate** → **Vai a Matcha Mailer (non sicura)**: è la tua app;
+3. spunta tutti gli accessi richiesti (Fogli, Documenti, Drive in sola lettura) → **Continua**;
+4. quando il browser dice che l'autenticazione è completata, chiudi la scheda.
+
+Il mailer salva il token in `secrets\token.json`. Con l'app in modalità test Google chiede di rifare l'accesso ogni 7 giorni: il mailer riapre il browser da solo.
+
+### 6. Collegamento sul desktop (facoltativo)
 
 Tasto destro su `Matcha Mailer.bat` → Invia a → Desktop (crea collegamento).
 
-### 5. Lettera d'intenti
+### 7. Lettera d'intenti
 
 Per il link nel WhatsApp, `lettera_intenti_v2` deve essere condivisa in sola lettura con "Chiunque abbia il link".
 
-## Prima di partire: DNS di matchadating.it
+## DNS di matchadating.it
 
-I record sono su Vercel. Senza queste correzioni le mail rischiano lo spam.
+SPF, DKIM e DMARC sono già configurati (record su Vercel, ottobre 2026). Valori di riferimento, se le mail iniziano a finire in spam:
 
 | Record | Nome | Valore |
 |---|---|---|
-| SPF (TXT) | `@` | `v=spf1 include:_spf.aruba.it -all` (oggi ha un punto finale di troppo) |
-| DKIM (TXT) | quello indicato da Aruba | Attiva DKIM nel pannello Aruba e copia il record |
+| SPF (TXT) | `@` | `v=spf1 include:_spf.aruba.it -all` |
+| DKIM (TXT) | quello indicato da Aruba | record copiato dal pannello Aruba |
 | DMARC (TXT) | `_dmarc` | `v=DMARC1; p=none; rua=mailto:info@matchadating.it` |
 
 ## Modificare i testi

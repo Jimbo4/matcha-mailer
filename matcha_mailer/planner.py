@@ -33,12 +33,13 @@ ACTION_LABEL = {
     "info": "",
 }
 
+# Values the mailer writes in "Ultima azione fatta": they must also be in the funnel's dropdown list.
 LAST_ACTION_VALUE = {
-    "mail1": "Email 1",
-    "mail2": "Email 2",
-    "mail3": "Email 3 (break up)",
-    "mail4": "Email lettera d'intenti",
-    "whatsapp": "WhatsApp lettera d'intenti",
+    "mail1": "Email automatica 1",
+    "mail2": "Email automatica 2",
+    "mail3": "Email automatica 3 (break up)",
+    "mail4": "Email automatica lettera d'intenti",
+    "whatsapp": "WhatsApp automatico lettera d'intenti",
 }
 
 
@@ -275,7 +276,7 @@ def next_due(kind: str, sent_on: date, days_mail_2: int, days_mail_3: int) -> st
 
 
 _NOTE_FRAGMENT = re.compile(
-    r",?\s*(?:Email [1-4]|Email 3 \(break up\)|Email lettera d'intenti|WhatsApp lettera d'intenti)"
+    r",?\s*(?:Email (?:automatica )?(?:[1-4]|3 \(break up\)|lettera d'intenti)|WhatsApp (?:automatico )?lettera d'intenti)"
     r"[^,]*?inviat[ao] il \d{2}/\d{2}/\d{4}",
 )
 

@@ -77,6 +77,15 @@ def test_next_due_and_note():
     n3 = planner.merge_note(n2, "Email 3 (break up) inviata il 26/10/2026")
     assert n3.endswith("in attesa, Email 3 (break up) inviata il 26/10/2026")
     assert planner.merge_note("", "Email 1 inviata il 12/10/2026") == "Email 1 inviata il 12/10/2026"
+    # fragments written before the "automatica" values are still replaced
+    n4 = planner.merge_note("Visitato, Email 1 inviata il 20/10/2026", "Email automatica 2 inviata il 26/10/2026")
+    assert n4 == "Visitato, Email automatica 2 inviata il 26/10/2026"
+    n5 = planner.merge_note(n4, "WhatsApp automatico lettera d'intenti inviato il 27/10/2026")
+    assert n5 == "Visitato, WhatsApp automatico lettera d'intenti inviato il 27/10/2026"
+
+
+def test_last_action_values_are_marked_automatic():
+    assert all(v.startswith(("Email automatica", "WhatsApp automatico")) for v in planner.LAST_ACTION_VALUE.values())
 
 
 def test_lost_venues_only_on_request():

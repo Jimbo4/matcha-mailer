@@ -60,11 +60,11 @@ def test_send_mail1_updates_funnel(cfg, sheet, monkeypatch, tmp_path):
     html = msg.get_body(("html",)).get_content()
     assert "Jacopo Marcolini" in html and "#38A096" in html
     row = next(r for r in sheet.values if r[0] == "Bar Uno")
-    assert row[7] == "Email 1" and row[8] == "12/10/2026" and row[10] == "1"
+    assert row[7] == "Email automatica 1" and row[8] == "12/10/2026" and row[10] == "1"
     assert row[12] == "16/10/2026" and row[13] == msg["Message-ID"]
-    assert row[9] == "Lasciato nostro numero, in attesa, Email 1 inviata il 12/10/2026"
+    assert row[9] == "Lasciato nostro numero, in attesa, Email automatica 1 inviata il 12/10/2026"
     bullet = engine.describe(changes, "Mail 1 inviata")
-    assert bullet.startswith("Bar Uno: ") and '"Chiamata" → "Email 1"' in bullet
+    assert bullet.startswith("Bar Uno: ") and '"Chiamata" → "Email automatica 1"' in bullet
     assert engine.sent_this_week(TODAY) == 1
 
 
@@ -92,7 +92,7 @@ def test_mail4_attachment_and_sent_copy_warning(cfg, sheet, monkeypatch, tmp_pat
     att = [p for p in mb.sent[0].iter_attachments()]
     assert att and att[0].get_filename() == "Lettera.pdf"
     row = next(r for r in sheet.values if r[0] == "Bar Tre")
-    assert row[10] == "4" and row[7] == "Email lettera d'intenti"
+    assert row[10] == "4" and row[7] == "Email automatica lettera d'intenti"
 
 
 def test_funnel_failure_is_reported_not_raised(cfg, sheet, monkeypatch, tmp_path):
