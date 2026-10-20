@@ -166,3 +166,25 @@ def test_pause_between_sends(cfg):
     assert min(values) >= 5 and max(values) <= 30 and max(values) - min(values) > 15
     assert engine.estimated_minutes(cfg, 1) == 1
     assert engine.estimated_minutes(cfg, 10) == round((9 * 17.5 + 30) / 60)
+
+
+def test_parse_reply_keeps_only_new_text():
+    from email.message import EmailMessage
+
+    from matcha_mailer.mailbox import parse_reply, strip_quoted
+
+    m = EmailMessage()
+    m["From"] = "Bar Uno <info@baruno.it>"
+    m["Subject"] = "Re: Partnership Bar Uno x Matcha"
+    m["Date"] = "Tue, 20 Oct 2026 17:05:00 +0200"
+    m.set_content("Stop, grazie\n\nIl giorno mar 20 ott 2026 Jacopo ha scritto:\n> Ciao,\n> sono Jacopo")
+    r = parse_reply("Bar Uno", m.as_bytes())
+    assert (r.sender, r.when, r.text) == ("info@baruno.it", "20/10/2026 17:05", "Stop, grazie")
+    assert r.subject.startswith("Re: Partnership")
+
+    h = EmailMessage()
+    h["From"] = "x@pub.it"
+    h.set_content("<p>Ci interessa!</p><div>Chiamami</div><blockquote>vecchia</blockquote>", subtype="html")
+    assert parse_reply("Pub", h.as_bytes()).text.startswith("Ci interessa!\nChiamami")
+    assert strip_quoted("Ok\nInviato da iPhone\nDa: Jacopo <jacopo@matchadating.it>") == "Ok"
+    assert strip_quoted("Va bene\n-----Messaggio originale-----\nciao") == "Va bene"

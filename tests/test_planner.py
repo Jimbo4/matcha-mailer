@@ -121,3 +121,14 @@ def test_explain_says_what_to_do():
     assert "stop" in planner.explain(Venue("X", email="x@x.it", probability="10 - nuovo", mail_step="stop"))
     assert "firmato" in planner.explain(Venue("X", email="x@x.it", probability="90 - firmato intento"))
     assert "10 - nuovo" in planner.explain(Venue("X", email="x@x.it", probability=""))
+
+
+def test_stop_venues_are_never_contacted():
+    vs = [
+        Venue("Stop step", email="a@a.it", probability="10 - nuovo", mail_step="stop"),
+        Venue("Stop azione", email="b@b.it", probability="50 - curioso", last_action="STOP"),
+        Venue("Stop perso", email="c@c.it", probability="00 - perso", last_action="Stop"),
+    ]
+    assert planner.plan(vs, TODAY, revive={"stop perso"}) == []
+    assert "STOP" in planner.explain(vs[1])
+    assert "non va riscritto" in planner.explain(vs[0])

@@ -33,6 +33,9 @@ ACTION_LABEL = {
     "info": "",
 }
 
+# "Ultima azione fatta" for a venue that asked not to be contacted again (written by `segna ... stop`).
+STOP_VALUE = "STOP"
+
 # Values the mailer writes in "Ultima azione fatta": they must also be in the funnel's dropdown list.
 LAST_ACTION_VALUE = {
     "mail1": "Email automatica 1",
@@ -162,7 +165,7 @@ def base_values(v: Venue, today: date, signed_count: int, letter_link: str) -> d
 def _cold_sequence(v: Venue, step: str, today: date, replied: set[str], values: dict[str, str]) -> Action | None:
     """Mail 1 -> Mail 2 -> Mail 3 for a venue that has an email and is not "TODO: da visitare"."""
     if v.name.lower() in replied and step in ("1", "2"):
-        return Action(v, "info", "Ha risposto: leggila tu e dimmi come aggiornare il funnel", False, False, values)
+        return Action(v, "info", "Ha risposto: leggi la risposta e aggiorna il funnel", False, False, values)
     kind = {"": "mail1", "1": "mail2", "2": "mail3"}.get(step)
     if not kind:
         return None
@@ -171,6 +174,10 @@ def _cold_sequence(v: Venue, step: str, today: date, replied: set[str], values: 
         if due and due > today:
             return Action(v, "info", f"{ACTION_LABEL[kind]} dal {calendar_it.fmt(due)}", False, False, values)
     return Action(v, kind, "Da inviare", True, True, values)
+
+
+def is_stop(v: Venue) -> bool:
+    return (v.last_action or "").strip().upper() == STOP_VALUE
 
 
 def _cold_ok(v: Venue, step: str) -> bool:
@@ -197,6 +204,8 @@ def plan(
         if not v.name.strip():
             continue
         step = (v.mail_step or "").strip().lower()
+        if step == "stop" or is_stop(v):
+            continue  # asked not to be contacted: never written to again
         code = v.prob_code
         values = base_values(v, today, signed, letter_link)
 
@@ -245,6 +254,8 @@ def explain(v: Venue, revived: bool = False) -> str:
     step = (v.mail_step or "").strip().lower()
     code = v.prob_code
     prob = (v.probability or "").strip() or "vuota"
+    if is_stop(v) and step != "stop":
+        return "in 'Ultima azione fatta' c'è \"STOP\": ha chiesto di non essere più contattato e non va riscritto."
     if step in STEP_EXPLAIN:
         return f"{STEP_EXPLAIN[step]}. Per ricominciare da capo svuota a mano 'Mail step' nel funnel."
     if code in ("10", "00") and (v.last_action or "").upper().startswith("TODO"):

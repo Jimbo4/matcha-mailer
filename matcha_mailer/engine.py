@@ -266,10 +266,14 @@ STEP_NOTES = {"stop": "ha chiesto di non essere più contattato", "risposta": "h
 
 
 def close_sequence(session: "Session", venue_name: str, value: str, today: date) -> list[Change]:
-    """Sets 'Mail step' to stop/risposta for a venue (found by name) and logs it."""
+    """Sets 'Mail step' to stop/risposta for a venue (found by name) and logs it.
+    For stop, 'Ultima azione fatta' becomes STOP too, so the venue stands out in the funnel."""
     if value not in STEP_NOTES:
         raise ValueError("Valore ammesso: stop oppure risposta")
-    changes = session.funnel.update_by_name(venue_name, {"mail_step": value})
+    fields = {"mail_step": value, "mail_next": ""}  # no next mail: the sequence is closed
+    if value == "stop":
+        fields["last_action"] = planner.STOP_VALUE
+    changes = session.funnel.update_by_name(venue_name, fields)
     session.write_history(today, "Mailer: sequenza chiusa",
                           [describe(changes, STEP_NOTES[value]) or f"{venue_name}: Mail step già \"{value}\""])
     return changes

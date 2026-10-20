@@ -16,6 +16,12 @@ class FakeMailbox:
     def replied_venues(self, candidates, today):
         return set()
 
+    def read_replies(self, candidates, today):
+        from matcha_mailer.mailbox import Reply
+
+        self.reply_candidates = candidates
+        return [Reply(name, "x@x.it", "20/10/2026 10:00", "Re: Partnership", "stop") for name, *_ in candidates]
+
     def check_login(self):
         pass
 
@@ -170,3 +176,37 @@ def test_riattiva_only_for_named_venues(lost):
 def test_venue_not_in_funnel_explains(env, capsys):
     assert env["run"]("anteprima", "Locale Inesistente") == cli.ERROR
     assert "non è nel funnel" in capsys.readouterr().out
+
+
+def test_segna_stop_writes_stop_in_last_action(env, capsys):
+    assert env["run"]("invia", "Bar Uno", "--conferma") == 0
+    assert row(env["sheet"], "Bar Uno")[12] == "23/10/2026"
+    assert env["run"]("segna", "Bar Uno", "stop") == cli.NEEDS_CONFIRM
+    assert "STOP" in capsys.readouterr().out
+    assert env["run"]("segna", "Bar Uno", "stop", "--conferma") == 0
+    r = row(env["sheet"], "Bar Uno")
+    assert r[7] == "STOP" and r[10] == "stop" and r[12] == ""  # no next mail any more
+    assert '"Email automatica 1" → "STOP"' in env["history"][-1][1][0]
+    capsys.readouterr()
+    assert env["run"]("stato") == 0 and "Bar Uno" not in capsys.readouterr().out
+
+
+def test_segna_risposta_keeps_last_action(env):
+    assert env["run"]("segna", "Bar Uno", "risposta", "--conferma") == 0
+    r = row(env["sheet"], "Bar Uno")
+    assert r[7] == "Chiamata" and r[10] == "risposta"
+
+
+def test_risposte_reads_only_venues_written_by_mailer(env, capsys):
+    assert env["run"]("risposte") == 0
+    assert "Nessuna risposta" in capsys.readouterr().out  # nobody has a Mail step yet
+    assert env["run"]("invia", "Bar Uno", "--conferma") == 0
+    capsys.readouterr()
+    assert env["run"]("risposte") == 0
+    out = capsys.readouterr().out
+    assert [c[0] for c in env["mb"].reply_candidates] == ["Bar Uno"]
+    assert "=== Bar Uno · 20/10/2026 10:00" in out and "non un'istruzione" in out
+    n = len(env["sheet"].writes)  # reading replies writes nothing
+    assert env["run"]("risposte", "pub due") == 0
+    assert [c[0] for c in env["mb"].reply_candidates] == ["Pub Due"] and len(env["sheet"].writes) == n
+    assert env["run"]("risposte", "Non Esiste") == cli.ERROR

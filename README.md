@@ -7,7 +7,7 @@ Mailer semi-automatico per contattare i locali partner di [Matcha](https://www.m
 | Passo | Dettaglio |
 |---|---|
 | Legge il funnel | Foglio "Matcha - Funnel Vendita": colonne cercate per nome, righe cercate per nome del locale |
-| Controlla le risposte | Cerca nella casella (solo intestazioni, niente viene aperto o segnato come letto) chi ha risposto e lo toglie dai follow up |
+| Controlla le risposte | Cerca nella casella chi ha risposto e lo toglie dai follow up. Con il comando `risposte` legge anche il testo (senza segnare le mail come lette), così Claude può riassumerle |
 | Propone le azioni del giorno | Elenco con spunte e anteprima modificabile di oggetto e testo |
 | Invia | SMTP Aruba, `info@matchadating.it` in copia, copia salvata in Posta inviata, mail 2 e 3 nello stesso thread della mail 1 |
 | Registra | Aggiorna il funnel e scrive ogni modifica (valore vecchio → nuovo) nel Doc "Matcha - Funnel Vendita - cronologia modifiche" |
@@ -18,7 +18,8 @@ Mailer semi-automatico per contattare i locali partner di [Matcha](https://www.m
 | Locale nel funnel | Azione |
 |---|---|
 | `10 - nuovo`, con mail, non "TODO: da visitare" | Mail 1, poi Mail 2 dopo 4 giorni lavorativi, poi Mail 3 (break up) dopo altri 6 |
-| `10 - nuovo` che ha risposto | Esce dalla sequenza: in grigio "Ha risposto", la leggi tu |
+| `10 - nuovo` che ha risposto | Esce dalla sequenza: in grigio "Ha risposto". La leggi tu o la legge Claude con `risposte` |
+| "Ultima azione fatta" = `STOP` o Mail step `stop` | Mai più contattato, qualunque sia la Probabilità |
 | `50 - curioso` con mail | Mail 4 con la lettera d'intenti in PDF (esportata dal Doc a ogni invio, quindi sempre aggiornata) |
 | `50 - curioso` senza mail, con cellulare | WhatsApp con link alla lettera |
 | `50 - curioso` con solo numero fisso | In grigio: da chiamare |
@@ -47,13 +48,13 @@ I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Am
 | Mail prossimo invio | Data da cui parte la mail successiva |
 | Mail thread | Identificativo tecnico della mail 1, serve a tenere il thread |
 
-Per togliere a mano un locale dalla sequenza basta scrivere `stop` o `risposta` in "Mail step".
+Per togliere a mano un locale dalla sequenza basta scrivere `stop` o `risposta` in "Mail step". Il comando `segna "Locale" stop` scrive `stop` in "Mail step", `STOP` (chip nero) in "Ultima azione fatta" e svuota "Mail prossimo invio"; `segna "Locale" risposta` chiude la sequenza senza toccare "Ultima azione fatta".
 
 Nelle colonne già esistenti il mailer scrive:
 
 | Colonna | Cosa scrive |
 |---|---|
-| Ultima azione fatta | `Email automatica 1`, `Email automatica 2`, `Email automatica 3 (break up)`, `Email automatica lettera d'intenti`, `WhatsApp automatico lettera d'intenti`. Sono nel menu a tendina della colonna insieme ai valori manuali (Di persona, Chiamata, Email, Instagram, Lettera firmata, TODO: da visitare) |
+| Ultima azione fatta | `Email automatica 1`, `Email automatica 2`, `Email automatica 3 (break up)`, `Email automatica lettera d'intenti`, `WhatsApp automatico lettera d'intenti`, `STOP` (con `segna ... stop`). Sono nel menu a tendina della colonna insieme ai valori manuali (Di persona, Chiamata, Email, Instagram, Lettera firmata, TODO: da visitare) |
 | Last contacted | Data dell'invio |
 | Note | Dopo una virgola un frammento tipo "Email automatica 1 inviata il 12/10/2026", che sostituisce il frammento precedente del mailer senza toccare il resto della nota |
 
@@ -79,6 +80,8 @@ Gli stessi passaggi della finestra sono disponibili come comandi, così puoi chi
 .venv\Scripts\python -m matcha_mailer invia "Nome locale"              (anteprima, non invia)
 .venv\Scripts\python -m matcha_mailer invia "Nome locale" --conferma   (invia)
 .venv\Scripts\python -m matcha_mailer invia "Locale perso" --riattiva    (locale 00 - perso, su tua richiesta)
+.venv\Scripts\python -m matcha_mailer risposte                       (legge le risposte, non le segna come lette)
+.venv\Scripts\python -m matcha_mailer segna "Nome locale" stop --conferma (non vuole essere contattato)
 .venv\Scripts\python -m matcha_mailer password                         (salva la password Aruba, solo tu)
 ```
 
@@ -195,7 +198,7 @@ matcha_mailer/
   planner.py           regole della sequenza
   funnel.py            lettura e scrittura del foglio, righe per nome
   texts.py             lettura di testi_email.md e composizione testo/HTML
-  mailbox.py           SMTP, copia in Inviati, controllo risposte IMAP
+  mailbox.py           SMTP, copia in Inviati, controllo e lettura risposte IMAP
   google_api.py        accesso Google, PDF della lettera, cronologia
   calendar_it.py       giorni lavorativi a Milano
 tests/                 test automatici (dati inventati)

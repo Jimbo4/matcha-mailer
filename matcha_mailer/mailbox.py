@@ -1,15 +1,19 @@
-"""Aruba mailbox: SMTP sending, copy in the Sent folder, reply detection (headers only)."""
+"""Aruba mailbox: SMTP sending, copy in the Sent folder, reply detection and reading (never marked as read)."""
 
 from __future__ import annotations
 
+import email
+import html
 import imaplib
 import re
 import smtplib
 import ssl
 import time
+from dataclasses import dataclass
 from datetime import date, timedelta
+from email import policy
 from email.message import EmailMessage
-from email.utils import formataddr, formatdate, make_msgid
+from email.utils import formataddr, formatdate, make_msgid, parseaddr, parsedate_to_datetime
 
 FREE_MAIL = {
     "gmail.com", "googlemail.com", "libero.it", "hotmail.com", "hotmail.it", "outlook.com",
@@ -131,6 +135,82 @@ class Mailbox:
         finally:
             m.logout()
         return found
+
+    def read_replies(self, candidates: list[tuple[str, str, str]], today: date) -> list["Reply"]:
+        """Same search as replied_venues, but also reads each reply (BODY.PEEK on a read-only folder:
+        nothing is marked as read). Mails sent by us are skipped."""
+        if not candidates:
+            return []
+        since = (today - timedelta(days=self.cfg.reply_lookback_days)).strftime("%d-%b-%Y")
+        out: list[Reply] = []
+        m = self._imap()
+        try:
+            m.select("INBOX", readonly=True)
+            for name, venue_email, msgid in candidates:
+                nums: list[bytes] = []
+                for criteria in search_criteria(venue_email, msgid, since):
+                    typ, data = m.search(None, *criteria)
+                    if typ == "OK" and data:
+                        nums += [n for n in data[0].split() if n not in nums]
+                for num in nums:
+                    typ, data = m.fetch(num, "(BODY.PEEK[])")
+                    raw = next((part[1] for part in data or [] if isinstance(part, tuple)), None)
+                    if typ != "OK" or not raw:
+                        continue
+                    r = parse_reply(name, raw)
+                    if r.sender.lower() != self.cfg.sender_email.lower():
+                        out.append(r)
+        finally:
+            m.logout()
+        out.sort(key=lambda r: r.venue.lower())
+        return out
+
+
+@dataclass
+class Reply:
+    venue: str
+    sender: str
+    when: str  # "gg/mm/aaaa hh:mm"
+    subject: str
+    text: str  # without the quoted original
+
+
+_QUOTE_START = re.compile(
+    r"^(>|-{2,}\s*(original message|messaggio originale)|(il|on)\b.*\b(ha scritto|wrote)\s*:|"
+    r"(da|from)\s*:.*@|inviato da |sent from )",
+    re.IGNORECASE,
+)
+
+
+def strip_quoted(text: str) -> str:
+    """Keeps only what the venue wrote: stops at the quoted original mail or the phone signature."""
+    lines = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        if _QUOTE_START.match(line.strip()):
+            break
+        lines.append(line.rstrip())
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def _html_to_text(s: str) -> str:
+    s = re.sub(r"(?is)<(script|style).*?</\1>", "", s)
+    s = re.sub(r"(?i)<br\s*/?>|</p>|</div>", "\n", s)
+    return html.unescape(re.sub(r"<[^>]+>", "", s))
+
+
+def parse_reply(venue: str, raw: bytes) -> Reply:
+    msg = email.message_from_bytes(raw, policy=policy.default)
+    body = msg.get_body(preferencelist=("plain", "html"))
+    text = ""
+    if body is not None:
+        text = body.get_content()
+        if body.get_content_type() == "text/html":
+            text = _html_to_text(text)
+    try:
+        when = parsedate_to_datetime(msg["Date"]).strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        when = str(msg["Date"] or "")
+    return Reply(venue, parseaddr(str(msg["From"] or ""))[1], when, str(msg["Subject"] or ""), strip_quoted(text))
 
 
 class SentCopyError(Exception):
