@@ -82,7 +82,8 @@ def describe(argv: list[str]) -> tuple[bool, str]:
     from matcha_mailer import cli
 
     args = cli.build_parser().parse_args(argv)
-    return cli.modifies(args), " ".join(shlex.quote(a) for a in argv)
+    return cli.modifies(args), " ".join(a if re.fullmatch(r"[\w.,/=:@+-]+", a) else '"' + a.replace('"', '\\"') + '"'
+                                        for a in argv)
 
 
 class _Tee:

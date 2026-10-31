@@ -142,6 +142,10 @@ class Session:
                 replied = self.mailbox.replied_venues(candidates, today)
             except Exception as exc:  # noqa: BLE001
                 warnings.append(f"Controllo risposte non riuscito ({exc}): i follow up restano da verificare a mano")
+            auto = getattr(self.mailbox, "auto_replies", set()) - replied
+            if auto:
+                names = sorted(v.name for v in venues if v.name.lower() in auto)
+                warnings.append("Solo risposte automatiche, la sequenza prosegue: " + ", ".join(names))
         actions = planner.plan(venues, today, replied, self.cfg.letter_pdf_link, revive)
         sent = self.registry.already_sent()
         first = self.registry.first_mail()
@@ -303,7 +307,8 @@ class Session:
     def inbox(self, since: date) -> list[InboxItem]:
         """Every mail received since the given day, classified and linked to venues. Changes nothing."""
         ids = self.registry.message_ids()
-        emails = {v.email.strip().lower(): v.name for v in self.funnel.load() if v.email.strip()}
+        self.venues = self.funnel.load()
+        emails = {v.email.strip().lower(): v.name for v in self.venues if v.email.strip()}
         items = [classify(folder, raw, self.cfg.sender_email, ids, emails)
                  for folder, raw in self.mailbox.read_inbox(since)]
         return [i for i in items if i]

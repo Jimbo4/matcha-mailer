@@ -149,3 +149,113 @@ def test_error_during_delivery_is_uncertain_and_not_retried(smtp):
     with pytest.raises(UncertainSendError, match="potrebbe essere partita"):
         mb.send(EmailMessage())
     assert waits == [] and FakeSMTP.script == []
+
+
+def test_own_follow_up_copies_never_count_as_replies():
+    from matcha_mailer.casella import search_criteria
+
+    crit = search_criteria("info@baruno.it", "<1@matchadating.it>", "19-Oct-2026", "Jacopo@matchadating.it")
+    assert crit and all(c[-3:] == ["NOT", "FROM", '"jacopo@matchadating.it"'] for c in crit)
+    assert ["HEADER", "In-Reply-To", '"<1@matchadating.it>"', "NOT", "FROM", '"jacopo@matchadating.it"'] in crit
+
+
+def test_casella_does_not_suggest_stop_twice(env, capsys):
+    from conftest import row
+
+    r = row(env["sheet"], "Bar Uno")
+    r[7] = "STOP"
+    env["mb"].inbox = [("INBOX", mail("info@baruno.it", "stop", "stop").as_bytes())]
+    assert env["run"]("casella", "--dal", "19/10/2026") == 0
+    out = capsys.readouterr().out
+    assert "(già STOP nel funnel)" in out and "Da segnare come stop" not in out
+
+
+# ------------------------------------------------------------------ risposte automatiche e lettura leggera
+
+NIKS_LIKE = "Grazie per aver contattato il locale.\nVi risponderemo al più presto.\n\nOrari di apertura: 18-02"
+
+
+def test_auto_reply_detection():
+    from matcha_mailer.casella import _parse, is_auto_reply
+
+    assert is_auto_reply(_parse(mail("info@baruno.it", "Re: Partnership", NIKS_LIKE).as_bytes()))
+    assert is_auto_reply(_parse(mail("info@baruno.it", "Re: Partnership", "ciao", Auto_Submitted="auto-replied").as_bytes()))
+    assert is_auto_reply(_parse(mail("info@baruno.it", "Risposta automatica: Partnership", "").as_bytes()))
+    assert not is_auto_reply(_parse(mail("info@baruno.it", "Re: Partnership", "Ci interessa, chiamami domani").as_bytes()))
+    assert not is_auto_reply(_parse(mail("info@baruno.it", "Re", "x", Auto_Submitted="no").as_bytes()))
+    assert kind(mail("info@baruno.it", "Re: Partnership", NIKS_LIKE)) == ("automatica", ["Bar Uno"])
+
+
+class FakeIMAP:
+    """Minimal IMAP: every search returns every message; fetch records what was downloaded."""
+
+    def __init__(self, messages):
+        self.messages = {str(i + 1).encode(): raw for i, raw in enumerate(messages)}
+        self.fetched = []
+
+    def login(self, *a):
+        pass
+
+    def logout(self):
+        pass
+
+    def list(self):
+        return "OK", [b'(\\HasNoChildren) "." INBOX', b'(\\HasNoChildren) "." INBOX.SPAM']
+
+    def select(self, folder, readonly=False):
+        self.folder = folder
+        return "OK", [b"1"]
+
+    def search(self, charset, *criteria):
+        return "OK", [b" ".join(self.messages) if self.folder == "INBOX" else b""]
+
+    def fetch(self, num, what):
+        raw = self.messages[num]
+        head, _, body = raw.partition(b"\r\n\r\n") if b"\r\n\r\n" in raw else raw.partition(b"\n\n")
+        self.fetched.append((num, what))
+        if what == "(BODY.PEEK[HEADER])":
+            data = head + b"\r\n\r\n"
+        elif what.startswith("(BODY.PEEK[TEXT]<0."):
+            data = body[: int(what.split(".")[2].rstrip(">)"))]
+        else:
+            data = raw
+        return "OK", [(num + b" (BODY[] {%d}" % len(data), data), b")"]
+
+
+def big_mail():
+    m = mail("umberto@matchadating.it", "Newsletter", "Testo della newsletter")
+    m.add_attachment(b"x" * 300000, maintype="image", subtype="png", filename="foto.png")
+    return m
+
+
+@pytest.fixture
+def imap(monkeypatch, cfg):
+    def make(messages):
+        fake = FakeIMAP([m.as_bytes() for m in messages])
+        monkeypatch.setattr(casella.imaplib, "IMAP4_SSL", lambda *a, **k: fake)
+        return Mailbox(cfg, "pw"), fake
+    return make
+
+
+def test_read_inbox_never_downloads_attachments(imap):
+    dmarc = mail("noreply-dmarc-support@google.com", "Report domain: matchadating.it Submitter: google.com")
+    dmarc.add_attachment(b"z" * 200000, maintype="application", subtype="zip", filename="r.zip")
+    own = mail("Jacopo <jacopo@matchadating.it>", "Partnership Bar Uno x Matcha", "copia in Cc")
+    mb, fake = imap([dmarc, own, big_mail(), mail("info@baruno.it", "Re: Partnership", "Ci interessa")])
+    items = mb.read_inbox(__import__("datetime").date(2026, 10, 19))
+    assert len(items) == 3  # own copy skipped
+    assert all(what != "(BODY.PEEK[])" for _, what in fake.fetched)  # nothing fetched whole
+    assert [w for n, w in fake.fetched if n in (b"1", b"2")] == ["(BODY.PEEK[HEADER])"] * 2  # headers only
+    sizes = [len(raw) for _, raw in items]
+    assert max(sizes) < 80000  # the 300 KB image never came down
+    kinds = [classify(f, raw, "jacopo@matchadating.it", IDS, EMAILS).kind for f, raw in items]
+    assert kinds == ["dmarc", "altro", "risposta"]
+
+
+def test_replied_venues_ignores_auto_replies(imap):
+    mb, _ = imap([mail("info@baruno.it", "Re: Partnership", NIKS_LIKE)])
+    today = __import__("datetime").date(2026, 10, 31)
+    assert mb.replied_venues([("Bar Uno", "info@baruno.it", "<1@matchadating.it>")], today) == set()
+    assert mb.auto_replies == {"bar uno"}
+    mb, _ = imap([mail("info@baruno.it", "Re: Partnership", NIKS_LIKE), mail("info@baruno.it", "Re: Re:", "Sì, passate")])
+    assert mb.replied_venues([("Bar Uno", "info@baruno.it", "<1@matchadating.it>")], today) == {"bar uno"}

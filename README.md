@@ -34,7 +34,7 @@ Gli invii seguono sempre due passaggi: prima una richiesta con l'anteprima, poi,
 | `invia "Locale" ...` | Senza `--conferma` mostra le anteprime e non invia | Sì, con `--conferma` |
 | `whatsapp "Locale"` | Testo e link WhatsApp pronti; `--inviato` registra l'invio | Sì, con `--inviato` |
 | `risposte` | Legge le risposte dei locali già scritti, senza segnarle come lette | No |
-| `casella` | Legge tutta la casella dal primo invio e classifica le mail: stop, segnalazioni spam, rimbalzi, risposte, report DMARC | No |
+| `casella` | Legge tutta la casella dal primo invio e classifica le mail: stop, segnalazioni spam, rimbalzi, risposte vere e automatiche, report DMARC. Legge solo intestazioni e inizio del testo, mai gli allegati | No |
 | `segna "Locale" stop` / `risposta` | Chiude la sequenza del locale | Sì, con `--conferma` |
 | `richiesta` | Esegue `locale\richieste\da_eseguire.txt` (è ciò che fa Esegui richiesta.bat) | Dipende dai comandi |
 | `password` | Salva la password Aruba (doppio clic su **Salva password Aruba.bat**) | Solo il portachiavi |
@@ -55,7 +55,7 @@ Opzioni di `anteprima`, `prova` e `invia`:
 |---|---|
 | Mail presente, Probabilità vuota | Candidato: entra nella sequenza con `attiva` |
 | `10 - nuovo`, con mail, non "TODO: da visitare" | Mail 1, poi Mail 2 dopo 4 giorni lavorativi, poi Mail 3 (break up) dopo altri 6, tutte nello stesso thread |
-| `10 - nuovo` che ha risposto | Esce dalla sequenza ("Ha risposto"): la leggi tu o Claude con `risposte` |
+| `10 - nuovo` che ha risposto | Esce dalla sequenza ("Ha risposto"): la leggi tu o Claude con `risposte`. Le risposte automatiche ("vi risponderemo al più presto", fuori ufficio) non contano: la sequenza prosegue e `stato` lo segnala |
 | "Ultima azione fatta" = `STOP` o Mail step `stop` | Mai più contattato, qualunque sia la Probabilità |
 | Ha segnalato una mail come spam | Come chi scrive "stop": `segna "Locale" stop` |
 | `50 - curioso` con mail | Mail 4 con la lettera d'intenti in PDF (esportata dal Doc a ogni invio) |
@@ -69,6 +69,7 @@ Opzioni di `anteprima`, `prova` e `invia`:
 - Tra un invio e l'altro fa una pausa casuale di 5-30 secondi. Se Aruba chiude la connessione prima dell'invio, riprova due volte (dopo 20 e 40 secondi).
 - Se l'errore arriva durante la consegna non riprova: la mail potrebbe essere partita, quindi va controllata la copia in Cc.
 - Soglia e pause si cambiano in `locale\config.ini`.
+- Il controllo delle risposte ignora le mail che partono da jacopo@: le copie dei nostri follow up arrivano in casella tramite il Cc a info@ e non vanno scambiate per risposte.
 - Quando un locale non ha azioni, il mailer spiega il motivo e cosa fare.
 
 ### Colonne del funnel
