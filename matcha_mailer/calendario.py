@@ -1,4 +1,4 @@
-"""Working days in Milan: weekends, Italian national holidays, Easter Monday, Sant'Ambrogio."""
+"""Giorni lavorativi a Milano: esclusi weekend, festività nazionali, Pasquetta e Sant'Ambrogio."""
 
 from __future__ import annotations
 

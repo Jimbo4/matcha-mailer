@@ -1,4 +1,5 @@
 import sys
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -6,7 +7,10 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from matcha_mailer import cli, config, operazioni, testi  # noqa: E402
 from matcha_mailer.config import Config  # noqa: E402
+from matcha_mailer.funnel import Funnel  # noqa: E402
+from matcha_mailer.registro import Registry  # noqa: E402
 
 HEADER = ["Nome attività", "Luogo attività o sede", "Zona", "Referente", "Cellulare", "Mail",
           "Probabilitá", "Ultima azione fatta", "Last contacted", "Note"]
@@ -62,3 +66,57 @@ def cfg(tmp_path):
         letter_filename="Lettera.pdf", client_secret=tmp_path / "c.json", token_path=tmp_path / "t.json",
         days_mail_2=4, days_mail_3=6, weekly_limit=20, reply_lookback_days=60,
     )
+
+
+TODAY = date(2026, 10, 19)  # Monday
+
+
+class FakeMailbox:
+    def __init__(self):
+        self.sent = []
+        self.inbox = []  # (folder, raw bytes) returned by read_inbox
+
+    def replied_venues(self, candidates, today):
+        return set()
+
+    def read_inbox(self, since):
+        self.inbox_since = since
+        return list(self.inbox)
+
+    def read_replies(self, candidates, today):
+        from matcha_mailer.casella import Reply
+
+        self.reply_candidates = candidates
+        return [Reply(name, "x@x.it", "20/10/2026 10:00", "Re: Partnership", "stop") for name, *_ in candidates]
+
+    def check_login(self):
+        pass
+
+    def send(self, msg):
+        self.sent.append(msg)
+
+
+@pytest.fixture
+def env(cfg, sheet, monkeypatch, tmp_path):
+    sheet.values.append(["Firmato", "", "Isola", "", "", "f@f.it", "90 - firmato intento", "Lettera firmata", "", ""])
+    mb = FakeMailbox()
+    history = []
+    s = operazioni.Session(cfg, Funnel(sheet), None, testi.load_texts(config.TEXTS_PATH), mb,
+                           Registry(tmp_path / "invii.csv"))
+    s._letter = b"%PDF fake"
+    s.write_history = lambda today, title, bullets: history.append((title, bullets))
+    sleeps = []
+
+    answers = []
+
+    def run(*argv, config=cfg):
+        return cli.run(list(argv), connect=lambda c, need_mailbox: s, today=TODAY, cfg=config,
+                       sleep=sleeps.append, ask=lambda prompt: answers.pop(0) if answers else "",
+                       request_path=tmp_path / "locale" / "richieste" / "da_eseguire.txt")
+
+    return {"run": run, "mb": mb, "sheet": sheet, "history": history, "sleeps": sleeps, "cfg": cfg,
+            "session": s, "answers": answers, "tmp": tmp_path}
+
+
+def row(sheet, name):
+    return next(r for r in sheet.values if r[0] == name)

@@ -1,4 +1,4 @@
-"""Aruba password in the Windows credential store (never in a file, never printed)."""
+"""Password Aruba nel portachiavi di Windows (mai in un file, mai stampata)."""
 
 from __future__ import annotations
 

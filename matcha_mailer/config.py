@@ -1,4 +1,8 @@
-"""Reads config.ini (local, not versioned) and resolves project paths."""
+"""Percorsi del progetto e lettura di locale/config.ini.
+
+Tutto ciò che è di questo PC (configurazione, credenziali, registro invii, richieste ed esiti)
+sta in locale/, che non va su GitHub. Nel repo restano solo codice, testi, test e documentazione.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +12,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config.ini"
-CONFIG_EXAMPLE = ROOT / "config.example.ini"
-DATA_DIR = ROOT / "data"
-SECRETS_DIR = ROOT / "secrets"
 TEXTS_PATH = ROOT / "testi_email.md"
+CONFIG_EXAMPLE = ROOT / "config.example.ini"
+
+LOCALE_DIR = ROOT / "locale"
+CONFIG_PATH = LOCALE_DIR / "config.ini"
+SECRETS_DIR = LOCALE_DIR / "segreti"
+REGISTRY_DIR = LOCALE_DIR / "registro"
+REQUESTS_DIR = LOCALE_DIR / "richieste"
+RESULTS_DIR = LOCALE_DIR / "esiti"
+DRAFTS_DIR = LOCALE_DIR / "bozze"  # testi modificati per --testo-file
+ARCHIVE_DIR = LOCALE_DIR / "archivio"
+
+REGISTRY_PATH = REGISTRY_DIR / "invii.csv"
+REQUEST_PATH = REQUESTS_DIR / "da_eseguire.txt"
 
 
 @dataclass
@@ -50,11 +63,12 @@ class ConfigMissing(Exception):
 
 def load_config(path: Path = CONFIG_PATH) -> Config:
     if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
         if CONFIG_EXAMPLE.exists():
             shutil.copy(CONFIG_EXAMPLE, path)
         raise ConfigMissing(
-            f"Ho creato {path.name} dal modello. Aprilo e inserisci gli ID dei tre file Drive (funnel, cronologia, "
-            "lettera_intenti_v2: la parte dell'URL tra /d/ e /edit), poi riapri il mailer. Dettagli nel README, Installazione."
+            "Ho creato locale/config.ini dal modello. Inserisci gli ID dei tre file Drive (funnel, cronologia, "
+            "lettera_intenti_v2: la parte dell'URL tra /d/ e /edit), poi rilancia. Dettagli nel README, Installazione."
         )
     cp = configparser.ConfigParser(inline_comment_prefixes=(";",))
     cp.read(path, encoding="utf-8")
@@ -76,7 +90,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
         history_doc_id=get("google", "cronologia_doc_id"),
         letter_doc_id=get("google", "lettera_doc_id"),
         letter_filename=get("google", "lettera_nome_file", "Lettera d'intenti Matcha.pdf"),
-        client_secret=ROOT / get("google", "credenziali", "secrets/credentials.json"),
+        client_secret=SECRETS_DIR / "credentials.json",
         token_path=SECRETS_DIR / "token.json",
         days_mail_2=int(get("sequenza", "giorni_mail_2", "4")),
         days_mail_3=int(get("sequenza", "giorni_mail_3", "6")),
@@ -97,7 +111,7 @@ def load_config(path: Path = CONFIG_PATH) -> Config:
     ]
     if missing:
         raise ConfigMissing(
-            "In config.ini mancano: " + ", ".join(missing)
-            + ". Apri config.ini e sostituisci i valori tra < > (per i file Drive: la parte dell'URL tra /d/ e /edit)."
+            "In locale/config.ini mancano: " + ", ".join(missing)
+            + ". Sostituisci i valori tra < > (per i file Drive: la parte dell'URL tra /d/ e /edit)."
         )
     return cfg

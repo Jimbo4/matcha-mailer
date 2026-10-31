@@ -1,4 +1,4 @@
-"""Parses testi_email.md (the single source of the copy) and renders text/HTML bodies.
+"""Legge testi_email.md (unica fonte dei testi) e compone testo semplice e HTML.
 
 Expected structure of the Markdown file:
 

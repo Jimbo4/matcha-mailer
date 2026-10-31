@@ -1,4 +1,4 @@
-"""Reads and updates the "Matcha - Funnel Vendita" sheet.
+"""Lettura e scrittura del foglio "Matcha - Funnel Vendita".
 
 Safety rules:
 - columns are found by header name, never by position;
@@ -80,6 +80,7 @@ class Funnel:
             venues.append(
                 Venue(
                     name=cell("name"),
+                    address=cell("address"),
                     zone=cell("zone"),
                     contact=cell("contact"),
                     phone=cell("phone"),

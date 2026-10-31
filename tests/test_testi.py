@@ -1,4 +1,5 @@
-from matcha_mailer import config, texts
+from matcha_mailer import config
+from matcha_mailer import testi as texts
 
 
 def load():

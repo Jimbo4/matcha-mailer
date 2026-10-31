@@ -1,54 +1,9 @@
 from dataclasses import replace
-from datetime import date
 
 import pytest
+from conftest import row
 
-from matcha_mailer import cli, engine, texts
-from matcha_mailer.funnel import Funnel
-
-TODAY = date(2026, 10, 19)  # Monday
-
-
-class FakeMailbox:
-    def __init__(self):
-        self.sent = []
-
-    def replied_venues(self, candidates, today):
-        return set()
-
-    def read_replies(self, candidates, today):
-        from matcha_mailer.mailbox import Reply
-
-        self.reply_candidates = candidates
-        return [Reply(name, "x@x.it", "20/10/2026 10:00", "Re: Partnership", "stop") for name, *_ in candidates]
-
-    def check_login(self):
-        pass
-
-    def send(self, msg):
-        self.sent.append(msg)
-
-
-@pytest.fixture
-def env(cfg, sheet, monkeypatch, tmp_path):
-    monkeypatch.setattr(engine, "LOG_PATH", tmp_path / "invii.csv")
-    sheet.values.append(["Firmato", "", "Isola", "", "", "f@f.it", "90 - firmato intento", "Lettera firmata", "", ""])
-    mb = FakeMailbox()
-    history = []
-    s = engine.Session(cfg, Funnel(sheet), None, texts.load_texts(engine.config_mod.TEXTS_PATH), mb)
-    s._letter = b"%PDF fake"
-    s.write_history = lambda today, title, bullets: history.append((title, bullets))
-    sleeps = []
-
-    def run(*argv, config=cfg):
-        return cli.run(list(argv), connect=lambda c, need_mailbox: s, today=TODAY, cfg=config,
-                       sleep=sleeps.append)
-
-    return {"run": run, "mb": mb, "sheet": sheet, "history": history, "sleeps": sleeps, "cfg": cfg}
-
-
-def row(sheet, name):
-    return next(r for r in sheet.values if r[0] == name)
+from matcha_mailer import cli
 
 
 def test_stato_lists_due_actions(env, capsys):

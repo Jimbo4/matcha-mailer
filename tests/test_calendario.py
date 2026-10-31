@@ -1,6 +1,6 @@
 from datetime import date
 
-from matcha_mailer import calendar_it as c
+from matcha_mailer import calendario as c
 
 
 def test_tomorrow_label():

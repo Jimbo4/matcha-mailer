@@ -58,7 +58,6 @@ def test_plan_rules():
         assert absent not in k
     assert acts[0].values["n_locali"] == "1"
     wa = next(a for a in acts if a.kind == "whatsapp")
-    assert wa.selected is False  # WhatsApp is never bulk-selected
 
 
 def test_when_we_met():
@@ -103,13 +102,9 @@ def test_lost_venues_only_on_request():
 
     acts = planner.plan(vs, TODAY, revive={"perso BAR"})
     a = next(a for a in acts if a.venue.name == "Perso Bar")
-    assert (a.kind, a.selectable, a.selected, a.lost) == ("mail1", True, True, True)
+    assert (a.kind, a.selectable, a.lost) == ("mail1", True, True)
     assert a.label.endswith("(locale perso)")
     assert "Perso senza mail" not in kinds(acts) and "Perso stop" not in kinds(acts)
-
-    shown = planner.plan(vs, TODAY, show_lost=True)
-    a = next(a for a in shown if a.venue.name == "Perso Bar")
-    assert (a.kind, a.selectable, a.selected) == ("mail1", True, False)  # listed, never pre-selected
 
 
 def test_explain_says_what_to_do():
@@ -120,7 +115,7 @@ def test_explain_says_what_to_do():
     assert "TODO" in planner.explain(Venue("X", email="x@x.it", probability="10 - nuovo", last_action="TODO: da visitare"))
     assert "stop" in planner.explain(Venue("X", email="x@x.it", probability="10 - nuovo", mail_step="stop"))
     assert "firmato" in planner.explain(Venue("X", email="x@x.it", probability="90 - firmato intento"))
-    assert "10 - nuovo" in planner.explain(Venue("X", email="x@x.it", probability=""))
+    assert "attiva" in planner.explain(Venue("X", email="x@x.it", probability=""))
 
 
 def test_stop_venues_are_never_contacted():

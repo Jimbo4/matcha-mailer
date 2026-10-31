@@ -1,8 +1,9 @@
 from datetime import date
 
-from matcha_mailer import engine, google_api, planner, texts
+from matcha_mailer import config, cronologia, operazioni, planner, testi
+from matcha_mailer.casella import SentCopyError, build_message, search_criteria
 from matcha_mailer.funnel import Funnel
-from matcha_mailer.mailbox import SentCopyError, build_message, search_criteria
+from matcha_mailer.registro import Registry
 
 TODAY = date(2026, 10, 12)
 
@@ -22,8 +23,8 @@ class FakeMailbox:
 
 
 def make_session(cfg, sheet, mailbox, monkeypatch, tmp_path):
-    monkeypatch.setattr(engine, "LOG_PATH", tmp_path / "invii.csv")
-    s = engine.Session(cfg, Funnel(sheet), None, texts.load_texts(engine.config_mod.TEXTS_PATH), mailbox)
+    s = operazioni.Session(cfg, Funnel(sheet), None, testi.load_texts(config.TEXTS_PATH), mailbox,
+                           Registry(tmp_path / "invii.csv"))
     s._letter = b"%PDF-1.4 fake"
     return s
 
@@ -63,9 +64,9 @@ def test_send_mail1_updates_funnel(cfg, sheet, monkeypatch, tmp_path):
     assert row[7] == "Email automatica 1" and row[8] == "12/10/2026" and row[10] == "1"
     assert row[12] == "16/10/2026" and row[13] == msg["Message-ID"]
     assert row[9] == "Lasciato nostro numero, in attesa, Email automatica 1 inviata il 12/10/2026"
-    bullet = engine.describe(changes, "Mail 1 inviata")
+    bullet = cronologia.describe(changes, "Mail 1 inviata")
     assert bullet.startswith("Bar Uno: ") and '"Chiamata" → "Email automatica 1"' in bullet
-    assert engine.sent_this_week(TODAY) == 1
+    assert s.registry.sent_this_week(TODAY) == 1
 
 
 def test_mail2_threads_on_mail1(cfg, sheet, monkeypatch, tmp_path):
@@ -123,7 +124,7 @@ def test_history_requests_reuse_trailing_empty_bullet():
                                                           "elements": [{"textRun": {"content": "testo à\n"}}]}},
         {"startIndex": 20, "endIndex": 21, "paragraph": {"bullet": {}, "elements": [{"textRun": {"content": "\n"}}]}},
     ]}}}]}
-    reqs = google_api.build_history_requests(doc, "12/10/2026", "Mailer: 1 mail inviate", ["Bar → ok"])
+    reqs = cronologia.build_history_requests(doc, "12/10/2026", "Mailer: 1 mail inviate", ["Bar → ok"])
     ins = reqs[0]["insertText"]
     assert ins["location"]["index"] == 20
     assert ins["text"] == "12/10/2026\nMailer: 1 mail inviate\nBar → ok"
@@ -140,7 +141,7 @@ def test_history_same_day_no_new_date_heading():
                                                          "elements": [{"textRun": {"content": "12/10/2026\n"}}]}},
         {"startIndex": 12, "endIndex": 18, "paragraph": {"elements": [{"textRun": {"content": "testo\n"}}]}},
     ]}}
-    reqs = google_api.build_history_requests(doc, "12/10/2026", "Titolo", ["a"])
+    reqs = cronologia.build_history_requests(doc, "12/10/2026", "Titolo", ["a"])
     assert reqs[0]["insertText"] == {"location": {"index": 17}, "text": "\nTitolo\na"}
     bullets = [r for r in reqs if "createParagraphBullets" in r][0]["createParagraphBullets"]["range"]
     assert bullets == {"startIndex": 25, "endIndex": 27}
@@ -162,16 +163,16 @@ def test_pause_between_sends(cfg):
     import random
 
     rng = random.Random(1)
-    values = [engine.pause_seconds(cfg, rng) for _ in range(200)]
+    values = [operazioni.pause_seconds(cfg, rng) for _ in range(200)]
     assert min(values) >= 5 and max(values) <= 30 and max(values) - min(values) > 15
-    assert engine.estimated_minutes(cfg, 1) == 1
-    assert engine.estimated_minutes(cfg, 10) == round((9 * 17.5 + 30) / 60)
+    assert operazioni.estimated_minutes(cfg, 1) == 1
+    assert operazioni.estimated_minutes(cfg, 10) == round((9 * 17.5 + 30) / 60)
 
 
 def test_parse_reply_keeps_only_new_text():
     from email.message import EmailMessage
 
-    from matcha_mailer.mailbox import parse_reply, strip_quoted
+    from matcha_mailer.casella import parse_reply, strip_quoted
 
     m = EmailMessage()
     m["From"] = "Bar Uno <info@baruno.it>"

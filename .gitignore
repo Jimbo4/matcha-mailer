@@ -1,8 +1,11 @@
-# dati personali e segreti: mai su GitHub
+# tutto ciò che è di questo PC: configurazione, credenziali, registro invii, richieste, esiti
+locale/
+*.pdf
+
+# vecchie posizioni (prima del refactoring di novembre 2026): non devono mai finire su GitHub
 config.ini
 secrets/
 data/
-*.pdf
 
 # python
 .venv/
