@@ -201,6 +201,9 @@ def test_bounce_is_reported_even_before_the_next_mail_is_due(env, capsys):
     out = capsys.readouterr().out
     assert "Mail non consegnate (rimbalzo)" in out and "Bar Uno (19/10/2026)" in out
     assert "Mail 3 · break up dal" not in out  # the waiting line explains the bounce instead
+    row(env["sheet"], "Bar Uno")[6] = "00 - perso"  # marked lost after the bounce: nothing more to say
+    assert env["run"]("stato") == 0
+    assert "Mail non consegnate" not in capsys.readouterr().out
 
 
 def test_venue_lost_after_mail1_gets_no_more_mails(env, capsys):

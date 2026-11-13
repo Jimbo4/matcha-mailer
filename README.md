@@ -89,7 +89,7 @@ Opzioni di `anteprima`, `prova` e `invia`:
 
 Per togliere a mano un locale dalla sequenza basta scrivere `stop` o `risposta` in "Mail step".
 
-**Per ordinare il funnel seleziona tutte le colonne, dalla A alla N.** Se ordini solo quelle originali (A-J), le colonne del mailer restano ferme e ogni riga si ritrova lo stato di un altro locale. Il mailer se ne accorge (il "Mail thread" di una riga è di un altro locale secondo il registro) e si ferma senza inviare né scrivere nulla: ripristina la versione di prima da File > Cronologia versioni, oppure chiedi a Claude di riallinearle.
+**Il filtro del funnel copre tutte le colonne, dalla A alla N** (esteso il 13/11/2026): ordinando dalle frecce del filtro le colonne del mailer seguono le righe. Se aggiungi colonne, estendi anche il filtro. Se ordini una selezione che non comprende le colonne del mailer (per esempio solo A-J), queste restano ferme e ogni riga si ritrova lo stato di un altro locale. Il mailer se ne accorge (il "Mail thread" di una riga è di un altro locale secondo il registro) e si ferma senza inviare né scrivere nulla: ripristina la versione di prima da File > Cronologia versioni, oppure chiedi a Claude di riallinearle.
 
 ## Cartella
 

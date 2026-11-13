@@ -162,7 +162,9 @@ class Session:
             day, last = bounced.get(v.name.lower()), calendario.parse(v.mail_last_sent)
             return day if day and (not last or day >= last) else None
 
-        not_delivered = [f"{v.name} ({calendario.fmt(bounce_of(v))})" for v in venues if bounce_of(v)]
+        planned = {a.venue.name for a in actions}  # a lost or closed venue gets nothing anyway: no warning
+        not_delivered = [f"{v.name} ({calendario.fmt(bounce_of(v))})" for v in venues
+                         if v.name in planned and bounce_of(v)]
         for a in actions:
             when = sent.get((a.venue.name.lower(), a.kind))
             if a.selectable and when:
