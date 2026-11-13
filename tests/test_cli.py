@@ -165,3 +165,93 @@ def test_risposte_reads_only_venues_written_by_mailer(env, capsys):
     assert env["run"]("risposte", "pub due") == 0
     assert [c[0] for c in env["mb"].reply_candidates] == ["Pub Due"] and len(env["sheet"].writes) == n
     assert env["run"]("risposte", "Non Esiste") == cli.ERROR
+
+
+# ------------------------------------------------------------------ correzioni del 13/11/2026
+
+
+def mailer_cols(sheet, name, step, last, nxt, thread=""):
+    r = row(sheet, name)
+    r += [""] * (14 - len(r))
+    r[10], r[11], r[12], r[13] = step, last, nxt, thread
+    return r
+
+
+def test_bounced_venue_gets_no_follow_up(env, capsys):
+    from datetime import date
+
+    mailer_cols(env["sheet"], "Bar Uno", "1", "12/10/2026", "16/10/2026")
+    env["mb"].bounces = {"bar uno": date(2026, 10, 13)}
+    assert env["run"]("stato") == 0
+    out = capsys.readouterr().out
+    assert "non consegnata" in out and "rimbalzo del 13/10/2026" in out
+    assert env["run"]("invia", "Bar Uno", "--conferma") == cli.ERROR
+    assert env["mb"].sent == []
+    env["mb"].bounces = {"bar uno": date(2026, 10, 10)}  # bounce of an older mail: the follow up goes ahead
+    assert env["run"]("invia", "Bar Uno", "--conferma") == 0
+    assert env["mb"].sent[0]["To"] == "info@baruno.it"
+
+
+def test_bounce_is_reported_even_before_the_next_mail_is_due(env, capsys):
+    from datetime import date
+
+    mailer_cols(env["sheet"], "Bar Uno", "2", "19/10/2026", "27/10/2026")
+    env["mb"].bounces = {"bar uno": date(2026, 10, 19)}
+    assert env["run"]("stato") == 0
+    out = capsys.readouterr().out
+    assert "Mail non consegnate (rimbalzo)" in out and "Bar Uno (19/10/2026)" in out
+    assert "Mail 3 · break up dal" not in out  # the waiting line explains the bounce instead
+
+
+def test_venue_lost_after_mail1_gets_no_more_mails(env, capsys):
+    env["sheet"].values.append(["Bar Lasciato", "Via E 5", "Isola", "", "", "lasciato@bar.it", "00 - perso",
+                                "Email automatica 1", "12/10/2026", "Non interessa", "1", "12/10/2026",
+                                "16/10/2026", ""])
+    assert env["run"]("stato") == 0
+    assert "Bar Lasciato" not in capsys.readouterr().out
+    assert env["run"]("invia", "Bar Lasciato", "--conferma") == cli.ERROR
+    out = capsys.readouterr().out
+    assert "dopo la Mail 1" in out and "--riattiva" in out
+    assert env["mb"].sent == []
+    assert env["run"]("invia", "Bar Lasciato", "--riattiva", "--conferma") == 0
+    assert env["mb"].sent[0]["To"] == "lasciato@bar.it" and row(env["sheet"], "Bar Lasciato")[10] == "2"
+
+
+def test_revived_venue_keeps_its_sequence(lost):
+    assert lost["run"]("invia", "Bar Perso", "--riattiva", "--conferma") == 0
+    assert lost["session"].registry.revived() == {"bar perso"}
+    row(lost["sheet"], "Bar Perso")[12] = "19/10/2026"  # Mail 2 due today
+    assert lost["run"]("invia", "Bar Perso", "--conferma") == 0  # no --riattiva needed any more
+    assert [m["To"] for m in lost["mb"].sent] == ["perso@bar.it", "perso@bar.it"]
+
+
+def test_risposte_searches_every_mail_sent_to_the_venue(env):
+    from datetime import date
+
+    reg = env["session"].registry
+    reg.add(date(2026, 10, 12), "Bar Uno", "mail1", "info@baruno.it", "Partnership", "<m1@matchadating.it>")
+    reg.add(date(2026, 10, 16), "Bar Uno", "mail4", "info@baruno.it", "Lettera", "<m4@matchadating.it>")
+    mailer_cols(env["sheet"], "Bar Uno", "4", "16/10/2026", "", "<m1@matchadating.it>")
+    assert env["run"]("risposte") == 0
+    (name, email, ids), = env["mb"].reply_candidates
+    assert name == "Bar Uno" and {"<m1@matchadating.it>", "<m4@matchadating.it>"} <= set(ids)
+
+
+def test_funnel_sorted_without_mailer_columns_blocks_everything(env, capsys):
+    reg = env["session"].registry
+    from datetime import date
+
+    reg.add(date(2026, 10, 12), "Bar Uno", "mail1", "info@baruno.it", "Partnership Bar Uno x Matcha", "<a@matchadating.it>")
+    reg.add(date(2026, 10, 12), "Pub Due", "mail1", "pubdue@gmail.com", "Partnership Pub Due x Matcha", "<b@matchadating.it>")
+    mailer_cols(env["sheet"], "Bar Uno", "1", "12/10/2026", "16/10/2026", "<b@matchadating.it>")  # swapped
+    mailer_cols(env["sheet"], "Pub Due", "1", "12/10/2026", "16/10/2026", "<a@matchadating.it>")
+    n = len(env["sheet"].writes)
+    for argv in (["stato"], ["invia", "Bar Uno", "--conferma"], ["segna", "Pub Due", "risposta", "--conferma"],
+                 ["attiva", "Bar Tre", "--conferma"]):
+        assert env["run"](*argv) == cli.ERROR
+        out = capsys.readouterr().out
+        assert "non corrispondono" in out and "Cronologia versioni" in out and "Bar Uno (ha il thread di Pub Due)" in out
+    assert env["mb"].sent == [] and len(env["sheet"].writes) == n
+    mailer_cols(env["sheet"], "Bar Uno", "1", "12/10/2026", "16/10/2026", "<a@matchadating.it>")  # realigned
+    mailer_cols(env["sheet"], "Pub Due", "1", "12/10/2026", "16/10/2026", "<b@matchadating.it>")
+    assert env["run"]("stato") == 0

@@ -95,10 +95,12 @@ def test_lost_venues_only_on_request():
         Venue("Perso in corso", email="c@c.it", probability="00 - perso", mail_step="1", mail_next="12/10/2026"),
         Venue("Perso risposto", email="r@r.it", probability="00 - perso", mail_step="2", mail_next="01/10/2026"),
     ]
-    k = kinds(planner.plan(vs, TODAY, replied={"perso risposto"}))
+    revived = {"Perso in corso", "Perso risposto"}  # revived earlier through the mailer (registry)
+    k = kinds(planner.plan(vs, TODAY, replied={"perso risposto"}, revived=revived))
     assert "Perso Bar" not in k  # never proposed without a request
     assert k["Perso in corso"] == ("mail2", True)  # already revived: the sequence goes on
     assert k["Perso risposto"] == ("info", False)
+    assert "Perso in corso" not in kinds(planner.plan(vs, TODAY))  # marked lost by hand after Mail 1: stops
 
     acts = planner.plan(vs, TODAY, revive={"perso BAR"})
     a = next(a for a in acts if a.venue.name == "Perso Bar")
@@ -127,3 +129,22 @@ def test_stop_venues_are_never_contacted():
     assert planner.plan(vs, TODAY, revive={"stop perso"}) == []
     assert "STOP" in planner.explain(vs[1])
     assert "non va riscritto" in planner.explain(vs[0])
+
+
+def test_signed_count_includes_contracts():
+    vs = [
+        Venue("Nuovo", email="a@a.it", probability="10 - nuovo"),
+        Venue("Intento", email="b@b.it", probability="90 - firmato intento"),
+        Venue("Contratto", email="c@c.it", probability="99 - firmato contratto"),
+    ]
+    acts = planner.plan(vs, TODAY)
+    assert [a.venue.name for a in acts] == ["Nuovo"] and acts[0].values["n_locali"] == "2"
+    assert "contratto" in planner.explain(vs[2])
+
+
+def test_lost_after_the_sequence_started_stops_unless_revived():
+    v = Venue("Lasciato", email="l@l.it", probability="00 - perso", mail_step="1", mail_next="01/10/2026")
+    assert planner.plan([v], TODAY) == []
+    assert "dopo la Mail 1" in planner.explain(v) and "--riattiva" in planner.explain(v)
+    assert kinds(planner.plan([v], TODAY, revive={"lasciato"}))["Lasciato"] == ("mail2", True)
+    assert kinds(planner.plan([v], TODAY, revived={"Lasciato"}))["Lasciato"] == ("mail2", True)  # from the registry

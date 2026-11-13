@@ -259,3 +259,68 @@ def test_replied_venues_ignores_auto_replies(imap):
     assert mb.auto_replies == {"bar uno"}
     mb, _ = imap([mail("info@baruno.it", "Re: Partnership", NIKS_LIKE), mail("info@baruno.it", "Re: Re:", "Sì, passate")])
     assert mb.replied_venues([("Bar Uno", "info@baruno.it", "<1@matchadating.it>")], today) == {"bar uno"}
+
+
+# ------------------------------------------------------------------ rimbalzi di Aruba (13/11/2026)
+
+ARUBA_BOUNCE = ("This is an automatically generated Delivery Status Notification.\n"
+                "Delivery to the following recipients failed permanently:\n * info@baruno.it\n"
+                "Reason: Siamo spiacenti, la tua email non è stata recapitata perchè non è stato possibile "
+                "contattare il server destinatario.\n\n"
+                "Message-ID: <179@matchadating.it>\nSubject: Re: Partnership Bar Uno x Matcha\n")
+
+
+def aruba_bounce(day="Sun, 01 Nov 2026 21:26:00 +0100"):
+    m = mail("mail-daemon@mx.aruba.it", "Recapito fallito", ARUBA_BOUNCE)
+    m.replace_header("Date", day)
+    return m
+
+
+def test_aruba_bounce_is_a_bounce_not_a_reply():
+    assert kind(aruba_bounce()) == ("rimbalzo", ["Bar Uno"])
+    assert kind(mail("noreply@provider.it", "Undelivered Mail Returned to Sender", "To: pubdue@gmail.com")) \
+        == ("rimbalzo", ["Pub Due"])
+    assert kind(mail("info@baruno.it", "Re: Partnership", "La mail di ieri non è arrivata, richiamami")) \
+        == ("risposta", ["Bar Uno"])
+
+
+def test_bounced_venues_matches_the_current_address(imap):
+    from datetime import date
+
+    today = date(2026, 11, 13)
+    mb, _ = imap([aruba_bounce(), mail("pubdue@gmail.com", "Re: Partnership", "Ci interessa")])
+    cands = [("Bar Uno", "info@baruno.it", ["<179@matchadating.it>"]), ("Pub Due", "pubdue@gmail.com", [])]
+    assert mb.bounced_venues(cands, today) == {"bar uno": date(2026, 11, 1)}
+    # address corrected in the funnel: the old bounce no longer blocks
+    assert mb.bounced_venues([("Bar Uno", "titolare@baruno.it", ["<179@matchadating.it>"])], today) == {}
+
+
+def test_bounce_never_counts_as_reply(imap):
+    from datetime import date
+
+    mb, _ = imap([aruba_bounce()])
+    cands = [("Bar Uno", "info@baruno.it", ["<179@matchadating.it>"])]
+    assert mb.replied_venues(cands, date(2026, 11, 13)) == set() and mb.auto_replies == set()
+    assert mb.read_replies(cands, date(2026, 11, 13)) == []
+
+
+def postfix_bounce(failed):
+    body = ("This is the mail system at host mx.aruba.it.\n\n"
+            "I'm sorry to have to inform you that your message could not\n"
+            "be delivered to one or more recipients. It's attached below.\n\n"
+            f"<{failed}>: host mx.esempio.it said: 550 5.2.2 user is over quota\n\n"
+            "--- messaggio originale ---\nTo: info@baruno.it\nCc: info@matchadating.it\n"
+            "Message-ID: <179@matchadating.it>\n")
+    return mail("MAILER-DAEMON@mx.aruba.it", "Undelivered Mail Returned to Sender", body)
+
+
+def test_bounce_names_only_the_recipient_that_failed(imap):
+    from datetime import date
+
+    item = classify("INBOX", postfix_bounce("info@baruno.it").as_bytes(), "jacopo@matchadating.it", IDS, EMAILS)
+    assert (item.kind, item.venues) == ("rimbalzo", ["Bar Uno"])
+    assert item.text.startswith("Non consegnata a info@baruno.it · motivo: 550 5.2.2 user is over quota")
+    # only the copy to info@ failed: the venue got the mail
+    assert kind(postfix_bounce("info@matchadating.it")) == ("rimbalzo", [])
+    mb, _ = imap([postfix_bounce("info@matchadating.it")])
+    assert mb.bounced_venues([("Bar Uno", "info@baruno.it", [])], date(2026, 10, 25)) == {}

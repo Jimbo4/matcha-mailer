@@ -177,17 +177,47 @@ class Mailbox:
         m = self._imap()
         try:
             m.select("INBOX", readonly=True)
-            for name, venue_email, msgid in candidates:
-                nums = _search(m, search_criteria(venue_email, msgid, since, self.cfg.sender_email))
-                if not nums:
-                    continue
-                if any(not is_auto_reply(_parse(_fetch_light(m, n))) for n in nums):
+            for name, venue_email, msgids in candidates:
+                nums = _search(m, search_criteria(venue_email, msgids, since, self.cfg.sender_email))
+                msgs = [x for x in (_parse(_fetch_light(m, n)) for n in nums) if not is_bounce(x)]
+                if not msgs:
+                    continue  # nothing, or only bounces: they are not replies (see bounced_venues)
+                if any(not is_auto_reply(x) for x in msgs):
                     found.add(name.lower())
                 else:
                     self.auto_replies.add(name.lower())
         finally:
             m.logout()
         return found
+
+    def bounced_venues(self, candidates: list[tuple[str, str, object]], today: date) -> dict[str, date]:
+        """candidates as in replied_venues. Returns lower-cased venue name -> day of the latest bounce
+        (mailer-daemon, Aruba's mail-daemon, postmaster, delivery reports) that names the venue's current
+        address: once the address is corrected in the funnel, old bounces no longer count.
+        Only headers and the start of the text are read, nothing is marked as read."""
+        emails = {(e or "").strip().lower(): n.lower() for n, e, *_ in candidates if (e or "").strip()}
+        if not emails:
+            return {}
+        since = imap_date(today - timedelta(days=self.cfg.reply_lookback_days))
+        out: dict[str, date] = {}
+        m = self._imap()
+        try:
+            m.select("INBOX", readonly=True)
+            for num in _search(m, [["SINCE", since] + c for c in BOUNCE_SEARCHES]):
+                raw = _fetch_light(m, num)
+                msg = _parse(raw)
+                if not raw or not is_bounce(msg):
+                    continue
+                day = _day(msg)
+                blob = _all_text(raw, msg)
+                failed, _ = bounce_details(blob)
+                for addr, name in emails.items():
+                    hit = addr in failed if failed else addr in blob  # no recipient readable: any mention
+                    if day and hit and (name not in out or day > out[name]):
+                        out[name] = day
+        finally:
+            m.logout()
+        return out
 
     def read_replies(self, candidates: list[tuple[str, str, str]], today: date) -> list["Reply"]:
         """Same search as replied_venues, but also reads each reply. Mails sent by us are skipped."""
@@ -198,10 +228,10 @@ class Mailbox:
         m = self._imap()
         try:
             m.select("INBOX", readonly=True)
-            for name, venue_email, msgid in candidates:
-                for num in _search(m, search_criteria(venue_email, msgid, since, self.cfg.sender_email)):
+            for name, venue_email, msgids in candidates:
+                for num in _search(m, search_criteria(venue_email, msgids, since, self.cfg.sender_email)):
                     raw = _fetch_light(m, num)
-                    if not raw:
+                    if not raw or is_bounce(_parse(raw)):
                         continue
                     r = parse_reply(name, raw)
                     if r.sender.lower() != self.cfg.sender_email.lower():
@@ -289,17 +319,21 @@ def imap_date(d: date) -> str:
     return f"{d.day:02d}-{MONTHS[d.month - 1]}-{d.year}"
 
 
-def search_criteria(email: str, msgid: str, since: str, own: str = "") -> list[list[str]]:
-    """IMAP searches that find a venue's mails. own: our address, excluded so that the copies of our
-    own follow ups (they reach the inbox through the Cc to info@ and carry In-Reply-To) never count as replies."""
+def search_criteria(email: str, msgids, since: str, own: str = "") -> list[list[str]]:
+    """IMAP searches that find a venue's mails. msgids: one Message-ID or a list, every mail we sent to the
+    venue (Mail 1, 2, 3, 4): a reply from another address (the owner writing from a personal mail) is found
+    through its In-Reply-To/References. own: our address, excluded so that the copies of our own follow ups
+    (they reach the inbox through the Cc to info@ and carry In-Reply-To) never count as replies."""
     email = (email or "").strip().lower()
+    ids = [msgids] if isinstance(msgids, str) else list(msgids or [])
+    ids = list(dict.fromkeys(i.strip() for i in ids if i and i.strip()))
     out: list[list[str]] = []
     if email:
         out.append(["SINCE", since, "FROM", f'"{email}"'])
         domain = email.split("@")[-1]
         if domain and domain not in FREE_MAIL:
             out.append(["SINCE", since, "FROM", f'"@{domain}"'])
-    if msgid:
+    for msgid in ids:
         out.append(["HEADER", "In-Reply-To", f'"{msgid}"'])
         out.append(["HEADER", "References", f'"{msgid}"'])
     if own:
@@ -356,6 +390,13 @@ def _when(msg) -> str:
         return parsedate_to_datetime(msg["Date"]).strftime("%d/%m/%Y %H:%M")
     except Exception:
         return str(msg["Date"] or "")
+
+
+def _day(msg) -> date | None:
+    try:
+        return parsedate_to_datetime(msg["Date"]).date()
+    except Exception:
+        return None
 
 
 def parse_reply(venue: str, raw: bytes) -> Reply:
@@ -415,6 +456,51 @@ class InboxItem:
     text: str = ""
 
 
+# Senders and subjects of "mail not delivered" notices. Aruba writes from mail-daemon@... with "Recapito fallito"
+# and no multipart/report, so neither the sender nor the report type alone is enough.
+_BOUNCE_SENDER = re.compile(r"^(mailer-daemon|mail-daemon|postmaster)@", re.IGNORECASE)
+_BOUNCE_SUBJECT = re.compile(
+    r"^\s*(recapito fallito|mancato recapito|messaggio non recapitato|undeliver(ed|able)|"
+    r"delivery status notification|mail delivery (failed|failure)|returned mail|failure notice)", re.IGNORECASE)
+BOUNCE_SEARCHES = (
+    ["FROM", '"mailer-daemon"'], ["FROM", '"mail-daemon"'], ["FROM", '"postmaster"'],
+    ["SUBJECT", '"Recapito fallito"'], ["SUBJECT", '"Undeliver"'], ["SUBJECT", '"Delivery Status Notification"'],
+)
+
+
+def is_bounce(msg) -> bool:
+    """Notice that one of our mails was not delivered (rimbalzo)."""
+    sender = parseaddr(str(msg["From"] or ""))[1].lower()
+    return (_report_type(msg) == "delivery-status" or bool(_BOUNCE_SENDER.match(sender))
+            or bool(_BOUNCE_SUBJECT.match(str(msg["Subject"] or ""))))
+
+
+# Who did not receive the mail. The bounce also quotes our original (To and Cc), so matching any address
+# in the text would blame the venue even when only the copy to info@ failed.
+_FAILED_RECIPIENT = (
+    re.compile(r"final-recipient:\s*rfc822;\s*<?([^\s<>;]+@[^\s<>;]+?)>?\s*$", re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^\s*<([^\s<>]+@[^\s<>]+)>:", re.MULTILINE),  # Postfix: <addr>: host ... said: 550 ...
+    re.compile(r"^\s*\*\s*([^\s<>]+@[^\s<>]+)\s*$", re.MULTILINE),  # Aruba "Recapito fallito": * addr
+)
+_BOUNCE_REASON = (
+    re.compile(r"diagnostic-code:\s*smtp;\s*(.+)", re.IGNORECASE),
+    re.compile(r"\bsaid:\s*(.+)", re.IGNORECASE),
+    re.compile(r"^\s*reason:\s*(.+)", re.IGNORECASE | re.MULTILINE),
+)
+
+
+def bounce_details(blob: str) -> tuple[list[str], str]:
+    """(failed recipients lower-cased, short reason) read from the text of a bounce."""
+    rcpts: list[str] = []
+    for rx in _FAILED_RECIPIENT:
+        for addr in rx.findall(blob):
+            addr = addr.strip().strip(".").lower()
+            if addr not in rcpts:
+                rcpts.append(addr)
+    reason = next((m.group(1).strip() for rx in _BOUNCE_REASON for m in [rx.search(blob)] if m), "")
+    return rcpts, re.sub(r"\s+", " ", reason)[:160]
+
+
 def _report_type(msg) -> str:
     """'feedback-report' (segnalazione spam), 'delivery-status' (rimbalzo) or ''."""
     for part in msg.walk():
@@ -467,8 +553,15 @@ def classify(folder: str, raw: bytes, own_email: str, message_ids: dict[str, str
         kind, venues = "dmarc", []
     elif report == "feedback-report" or "abuse" in sender.split("@")[0]:
         kind, venues = "spam", sorted(by_id or by_addr)
-    elif report == "delivery-status" or re.match(r"^(mailer-daemon|postmaster)@", sender):
-        kind, venues = "rimbalzo", sorted(by_id or by_addr)
+    elif is_bounce(msg):
+        kind = "rimbalzo"
+        failed, reason = bounce_details(blob)
+        if failed:
+            venues = sorted({venue_emails[a] for a in failed if a in venue_emails})
+            text = (f"Non consegnata a {', '.join(failed)}" + (f" · motivo: {reason}" if reason else "")
+                    + f" · {text}")
+        else:
+            venues = sorted(by_id or by_addr)
     elif (from_venue or by_id) and (_STOP_WORDS.match(subject) or _STOP_WORDS.match(text) or _STOP_PHRASES.search(text)):
         kind, venues = "stop", sorted({from_venue} - {""} or by_id)
     elif from_venue or by_id:

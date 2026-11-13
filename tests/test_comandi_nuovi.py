@@ -98,3 +98,20 @@ def test_registry_adds_new_column_to_old_file(tmp_path):
     assert list(rows[0].keys()) == FIELDS and rows[0]["nome_in_mail"] == "" and rows[1]["nome_in_mail"] == "Pub"
     assert reg.message_ids() == {"1@m.it": "Bar Uno", "2@m.it": "Pub Due"}
     assert reg.sent_this_week(date(2026, 10, 21)) == 2
+
+
+def test_registry_remembers_revived_venues(tmp_path):
+    from datetime import date
+
+    path = tmp_path / "invii.csv"
+    path.write_text("data,ora,locale,azione,destinatario,oggetto,message_id,nome_in_mail\n"
+                    "20/10/2026,17:00,Bar Uno,mail1,a@b.it,Partnership Bar Uno x Matcha,<1@m.it>,\n", encoding="utf-8")
+    reg = Registry(path)
+    assert reg.revived() == set()
+    reg.add(date(2026, 10, 21), "Bar Perso", "mail1", "p@b.it", "Partnership Bar Perso x Matcha", "<2@m.it>",
+            revived=True)
+    reg.add(date(2026, 10, 22), "Bar Uno", "mail4", "a@b.it", "Lettera", "<3@m.it>")
+    assert reg.revived() == {"bar perso"}
+    assert reg.ids_by_venue()["bar uno"] == ["<1@m.it>", "<3@m.it>"]
+    with path.open(encoding="utf-8") as f:
+        assert [r["riattivato"] for r in csv.DictReader(f)] == ["", "1", ""]

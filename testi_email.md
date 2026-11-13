@@ -130,7 +130,7 @@ Ciao {nome}, sono Jacopo di Matcha, l'app di incontri dal vivo: grazie ancora pe
 | `{nome}` | Colonna "Referente" del funnel (solo il nome) | "Ciao," senza nome |
 | `{nome_locale}` | Colonna "Nome attività" | Sempre presente |
 | `{zona}` | Colonna "Zona" | "nei locali partner della tua zona" |
-| `{n_locali}` | Conteggio righe "90 - firmato intento" (oggi 4) | Da scrivere a mano in anteprima |
+| `{n_locali}` | Conteggio righe "90 - firmato intento" e "99 - firmato contratto" | Da scrivere a mano in anteprima |
 | `{domani}` | "domani" se il giorno dopo l'invio è lavorativo, altrimenti il giorno (es. "lunedì") | Sempre calcolato |
 | `{quando_ci_siamo_sentiti}` | "Ultima azione fatta" + "Last contacted": "da {nome_locale} il 28/09" (visita) oppure "al telefono" (chiamata) | "da {nome_locale} nei giorni scorsi" |
 | `{link_pdf}` | Link di download PDF di lettera_intenti_v2 (serve la condivisione "chiunque abbia il link") | Sempre presente |

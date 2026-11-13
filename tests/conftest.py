@@ -75,9 +75,13 @@ class FakeMailbox:
     def __init__(self):
         self.sent = []
         self.inbox = []  # (folder, raw bytes) returned by read_inbox
+        self.bounces = {}  # lower-cased venue name -> day of the bounce, returned by bounced_venues
 
     def replied_venues(self, candidates, today):
         return set()
+
+    def bounced_venues(self, candidates, today):
+        return dict(self.bounces)
 
     def read_inbox(self, since):
         self.inbox_since = since

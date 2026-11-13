@@ -7,7 +7,10 @@ Rules (see README):
 - Anyone who replied (detected in the inbox) leaves the sequence: Jacopo reads the reply.
 - "Mail step" = stop / risposta / 3 / 4 / WA means nothing else is sent.
 - "00 - perso" is skipped unless Jacopo asks for it (revive): then it follows the
-  same cold sequence as "10 - nuovo". Its Probabilità stays "00"; Mail 2 and 3 follow from "Mail step".
+  same cold sequence as "10 - nuovo". Its Probabilità stays "00"; Mail 2 and 3 follow from "Mail step"
+  only for venues revived through the mailer (registry). A venue marked lost after Mail 1 or 2 gets
+  nothing more unless Jacopo asks again.
+- {n_locali} counts the venues that joined: "90 - firmato intento" and "99 - firmato contratto".
 - A venue with an email and an empty Probabilità is a candidate: `attiva` sets "10 - nuovo".
 """
 
@@ -35,6 +38,9 @@ ACTION_LABEL = {
 }
 
 NEW_PROBABILITY = "10 - nuovo"  # written by `attiva`
+
+# Probabilità codes of venues that joined Matcha: counted in {n_locali}, never written to by the sequence.
+SIGNED_CODES = ("90", "99")
 
 # "Ultima azione fatta" for a venue that asked not to be contacted again (written by `segna ... stop`).
 STOP_VALUE = "STOP"
@@ -194,12 +200,16 @@ def plan(
     replied: set[str] | None = None,
     letter_link: str = "",
     revive: set[str] | None = None,
+    revived: set[str] | None = None,
 ) -> list[Action]:
     """replied: lower-cased venue names that answered (from the inbox check).
-    revive: venue names (any case) marked "00 - perso" that Jacopo asked to contact anyway: Mail 1 is proposed."""
+    revive: venue names (any case) marked "00 - perso" that Jacopo asked to contact anyway in this command:
+    Mail 1, or the next mail if the sequence had already started.
+    revived: venue names already revived earlier (registry): their sequence goes on by itself."""
     replied = replied or set()
     revive = {norm(n) for n in (revive or set())}
-    signed = sum(1 for v in venues if v.prob_code == "90")
+    revived = {norm(n) for n in (revived or set())}
+    signed = sum(1 for v in venues if v.prob_code in SIGNED_CODES)
     actions: list[Action] = []
 
     for v in venues:
@@ -211,8 +221,10 @@ def plan(
         code = v.prob_code
         values = base_values(v, today, signed, letter_link)
 
-        if code == "10" or (code == "00" and step in ("1", "2")):
-            # a lost venue already revived keeps going through Mail 2 and Mail 3 by itself
+        # a lost venue revived through the mailer keeps going through Mail 2 and Mail 3 by itself;
+        # one marked lost after Mail 1 or 2 (by hand, e.g. after a call) stops until Jacopo asks again
+        lost_going_on = code == "00" and step in ("1", "2") and norm(v.name) in (revived | revive)
+        if code == "10" or lost_going_on:
             if not _cold_ok(v, step):
                 continue
             a = _cold_sequence(v, step, today, replied, values)
@@ -265,6 +277,11 @@ def explain(v: Venue, revived: bool = False) -> str:
         extra = " Con un cellulare puoi usare WhatsApp solo da \"50 - curioso\"." if code != "50" else ""
         return (f"nel funnel manca la mail (Probabilità \"{prob}\"). "
                 f"Aggiungila nella colonna 'Mail', poi rilancia.{extra}")
+    if code == "00" and step in ("1", "2") and not revived:
+        why = f" Nota nel funnel: \"{v.notes.strip()}\"." if (v.notes or "").strip() else ""
+        return (f"è stato segnato \"00 - perso\" dopo la Mail {step}: il mailer non gli manda il resto della "
+                f"sequenza finché non lo chiedi tu.{why} Per mandargli comunque la Mail {int(step) + 1} aggiungi "
+                "--riattiva al comando; Probabilità resta 00.")
     if code == "00" and not revived:
         why = f" Nota nel funnel: \"{v.notes.strip()}\"." if (v.notes or "").strip() else ""
         return ("è segnato \"00 - perso\" e il mailer lo salta finché non lo chiedi tu." + why +
@@ -272,6 +289,8 @@ def explain(v: Venue, revived: bool = False) -> str:
                 "della sequenza; Probabilità resta 00.")
     if code == "90":
         return "ha già firmato la lettera d'intenti (90): nessuna mail della sequenza."
+    if code == "99":
+        return "ha già firmato il contratto (99): nessuna mail della sequenza."
     if not code and not activation_problem(v):
         return ("Probabilità vuota: è un candidato. Per inserirlo nella sequenza usa `attiva` "
                 "(Probabilità \"10 - nuovo\"), poi rilancia.")

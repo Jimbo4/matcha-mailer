@@ -18,7 +18,7 @@ Il mailer gira **solo sul PC di Jacopo** (Windows): lì ci sono la password Arub
 4. **Soglia settimanale (20 mail):** se il comando segnala che si supera, chiedi a Jacopo. Usa `--oltre-soglia` solo con il suo ok.
 5. **Password e segreti:** non chiedere, leggere, stampare o copiare la password Aruba né i file in `locale/segreti/`. La password la salva Jacopo con un doppio clic su `Salva password Aruba.bat`.
 6. **Git:** il repo è pubblico. Mai committare `locale/`, PDF, dati dei locali, ID dei file o segreti.
-7. **Funnel:** le righe si cercano sempre per nome del locale, mai per numero di riga (il foglio viene riordinato). Il mailer lo fa da solo, rilegge la riga dopo aver scritto e aggiorna la cronologia. Per le modifiche che fai fuori dal mailer (note, correzioni, nuovi locali):
+7. **Funnel:** le righe si cercano sempre per nome del locale, mai per numero di riga (il foglio viene riordinato). Prima di ogni invio o scrittura il mailer controlla che le colonne K-N siano allineate (thread confrontato con il registro) e si ferma se non lo sono. Il mailer lo fa da solo, rilegge la riga dopo aver scritto e aggiorna la cronologia. Per le modifiche che fai fuori dal mailer (note, correzioni, nuovi locali):
    - prima di scrivere rileggi la riga e controlla che in "Nome attività" ci sia esattamente il locale giusto; se il nome non corrisponde o ci sono più righe con lo stesso nome, non scrivere e chiedi a Jacopo;
    - non sovrascrivere dati esistenti; nelle note riassumi il contenuto precedente (o toglilo se non serve più) e aggiungi la nuova nota dopo una virgola;
    - dopo aver scritto rileggi la riga per nome e verifica i valori;
@@ -35,6 +35,11 @@ Il mailer gira **solo sul PC di Jacopo** (Windows): lì ci sono la password Arub
 11. **Se manca qualcosa, spiega le operazioni da fare.** Quando un comando si ferma (installazione, `.venv`, `locale/config.ini`, credenziali, password, dati nel funnel, locale fuori sequenza), dai a Jacopo l'elenco ordinato delle operazioni, per ognuna chi la fa, dove e come verificarla. Fai subito quelle che puoi fare tu senza violare le altre regole. Il mailer spiega il motivo nei messaggi d'errore: riportalo e completalo.
 12. **Locali `00 - perso`:** il mailer li salta. Si ricontattano solo se Jacopo lo chiede per quel locale: allora aggiungi `--riattiva` ad `anteprima`, `prova` e `invia`. Mai di tua iniziativa e mai per gruppi non nominati. La Probabilità resta `00`.
 13. **Documentazione aggiornata:** quando emergono informazioni nuove sul mailer o su come lavorare con Jacopo, aggiorna nello stesso turno `README.md` (per Jacopo) e `CLAUDE.md` (per te). Mai dati dei locali, ID dei file o segreti.
+14. **Valuta sempre se ogni mail ha senso per lo stato del locale nel funnel** (regola di Jacopo). Il mailer applica solo la tabella della sequenza: prima di proporre un invio rileggi per nome, per ogni locale, Probabilità, Ultima azione fatta, Last contacted e Note (anche le note di Umberto, tipo "Umbi (gg/mm): ...") e togli le mail che non hanno senso. Esempi:
+   - Mail 1 o sequenza a chi ha già aderito o firmato (`90`, `99`) o è dello stesso gruppo di un locale firmato;
+   - follow up o break up a chi si è detto interessato o sta trattando con Umberto: proponi invece `segna "Locale" risposta` e, se serve, `50 - curioso`;
+   - mail a un indirizzo che è rimbalzato, o che contraddice un contatto in corso (es. il locale deve richiamare e la nota è di oggi).
+   Se l'esito non è chiaro, chiedi a Jacopo prima di inviare. Nella panoramica mostra gli esclusi con il motivo e, se il funnel non corrisponde a quello che dice Jacopo, segnalalo e proponi la correzione.
 
 ## Richieste (sessione cloud collegata al PC)
 
@@ -69,8 +74,8 @@ Git da `device_bash`: non può cancellare file di lock, quindi non fare commit d
 | `invia "A" "B" ...` | Senza `--conferma`: anteprime e riepilogo, niente invii | No |
 | `invia ... --conferma` | Invia con pausa casuale, copia in Posta inviata, aggiorna funnel, registro e cronologia | Sì |
 | `whatsapp "Locale" [--apri]` / `--inviato` | Testo e link pronti / registra l'invio fatto da Jacopo | Sì, con `--inviato` |
-| `risposte ["Locale" ...]` | Risposte dei locali già scritti | No |
-| `casella [--dal gg/mm/aaaa]` | Tutta la casella (INBOX e spam) dal primo invio, classificata: stop, spam, rimbalzi, risposte, risposte automatiche, altro, DMARC; suggerisce i `segna ... stop` per chi non è già STOP. Legge intestazioni e inizio del testo, mai gli allegati | No |
+| `risposte ["Locale" ...]` | Risposte dei locali già scritti, anche da un altro indirizzo se rispondono a una nostra mail (cerca tutti i Message-ID del registro) | No |
+| `casella [--dal gg/mm/aaaa]` | Tutta la casella (INBOX e spam) dal primo invio, classificata: stop, spam, rimbalzi (con destinatario fallito e motivo: conta solo chi non ha ricevuto, non chi è citato nella mail originale), risposte, risposte automatiche, altro, DMARC; suggerisce i `segna ... stop` per chi non è già STOP. Legge intestazioni e inizio del testo, mai gli allegati | No |
 | `segna "Locale" risposta\|stop [--conferma]` | Chiude la sequenza; con `stop` scrive anche `STOP` in "Ultima azione fatta" | Sì, con `--conferma` |
 | `richiesta` | Esegue la richiesta (lo lancia `Esegui richiesta.bat`) | Dipende |
 | `password` | Solo Jacopo, con `Salva password Aruba.bat` | Solo il portachiavi |
@@ -81,7 +86,7 @@ Codici di uscita: `0` fatto, `1` errore (leggi il messaggio), `2` niente fatto p
 
 ## Procedure
 
-**"Cosa c'è da fare oggi?"**: `stato`, poi una tabella: locale, zona, azione, destinatario. Jacopo sceglie, anteprime, ok, un solo `invia "A" "B" "C" --conferma` (la pausa tra gli invii la mette il mailer).
+**"Cosa c'è da fare oggi?"**: `stato`, poi rileggi nel funnel lo stato di ogni locale proposto (regola 14), poi una tabella: locale, zona, azione, destinatario, più gli esclusi con il motivo. Jacopo sceglie, anteprime, ok, un solo `invia "A" "B" "C" --conferma` (la pausa tra gli invii la mette il mailer).
 
 **"Manda la mail a [locale]"**: `invia "[locale]"` senza `--conferma`; se non ha azioni riporta motivo e operazioni (regola 11); anteprima completa a Jacopo; parti tra graffe da chiedere; ok; `invia "[locale]" --conferma`; riporta l'esito (inviata, funnel, cronologia, avvisi).
 
@@ -109,14 +114,16 @@ Codici di uscita: `0` fatto, `1` errore (leggi il messaggio), `2` niente fatto p
 | `10 - nuovo` che ha risposto | Nessuna: "Ha risposto" (regola 8) |
 | "Ultima azione fatta" = `STOP` (qualunque Probabilità) | Nessuna, mai più |
 | `50 - curioso` con mail / solo cellulare / solo fisso | Mail 4 con lettera / WhatsApp / da chiamare |
-| `00 - perso` con mail, su richiesta (`--riattiva`) | Come `10 - nuovo`, Probabilità resta `00` |
-| `90`, `00` senza richiesta, Mail step `3`, `4`, `WA`, `stop`, `risposta` | Nessuna |
+| `00 - perso` con mail, su richiesta (`--riattiva`) | Come `10 - nuovo`, Probabilità resta `00`; Mail 2 e 3 proseguono da sole (colonna `riattivato` del registro) |
+| `00 - perso` con Mail step `1`/`2` messo a mano (non riattivato dal mailer) | Nessuna: la mail successiva solo se Jacopo la chiede (`--riattiva`) |
+| `10`/`00` la cui ultima mail è rimbalzata (avviso di mancata consegna dopo "Mail ultimo invio" che cita la mail attuale del funnel) | Nessuna: `stato` lo segnala; si sblocca da solo quando cambia la mail nel funnel |
+| `90`, `99`, `00` senza richiesta, Mail step `3`, `4`, `WA`, `stop`, `risposta` | Nessuna |
 
 Mail 2 e 3 riusano oggetto e nome del locale registrati con la Mail 1 (`locale/registro/invii.csv`). Colonne del mailer nel funnel: `Mail step`, `Mail ultimo invio`, `Mail prossimo invio`, `Mail thread` (non toccarlo). I valori scritti in "Ultima azione fatta" sono nel menu a tendina della colonna (convalida rigida): se cambi `LAST_ACTION_VALUE` in `planner.py`, aggiorna anche il menu (colonna H, tutte le righe) mantenendo valori manuali e colori, e registra la modifica in cronologia.
 
 ## Testi
 
-Tutti i testi e la firma sono in `testi_email.md`, letto a ogni comando. Le parti tra graffe le riempie il mailer. `{numero_coppie}` nella Mail 3 va sempre chiesto a Jacopo: finché manca, la mail non parte. Se manca `{n_locali}` (nessun locale firmato nel funnel), chiedi a Jacopo.
+Tutti i testi e la firma sono in `testi_email.md`, letto a ogni comando. Le parti tra graffe le riempie il mailer. `{numero_coppie}` nella Mail 3 va sempre chiesto a Jacopo: finché manca, la mail non parte. `{n_locali}` conta i locali `90` e `99`; se manca (nessun locale firmato nel funnel), chiedi a Jacopo.
 
 ## File
 
@@ -124,7 +131,7 @@ Tutti i testi e la firma sono in `testi_email.md`, letto a ogni comando. Le part
 |---|---|
 | `locale/config.ini` | Mittente, copia (info@), server Aruba, ID dei file Drive, giorni della sequenza, soglia, pause |
 | `locale/segreti/` | Credenziali e token Google: non leggere, non copiare |
-| `locale/registro/invii.csv` | Ogni invio: data, ora, locale, azione, destinatario, oggetto, Message-ID, nome usato nella mail. Serve a contare la settimana, a non riproporre mail partite, a tenere thread e nome per Mail 2 e 3, a collegare la casella ai locali |
+| `locale/registro/invii.csv` | Ogni invio: data, ora, locale, azione, destinatario, oggetto, Message-ID, nome usato nella mail, `riattivato` (1 se inviata con `--riattiva` a un `00 - perso`). Serve a contare la settimana, a non riproporre mail partite, a tenere thread e nome per Mail 2 e 3, a collegare la casella ai locali |
 | `locale/richieste/` | `da_eseguire.txt` (la prossima richiesta) e `eseguite/` |
 | `locale/esiti/` | Output di ogni richiesta, `AAAAMMGG-HHMM_titolo.txt` |
 | `locale/bozze/` | Testi per `--testo-file` |
@@ -163,6 +170,7 @@ Account Google: quello **personale** di Jacopo (vede funnel, cronologia e letter
 | "copia in Inviati non salvata" | La mail è partita: avvisa Jacopo, non reinviarla |
 | "Richiesta NON eseguita" | Correggi `locale/richieste/da_eseguire.txt` secondo le righe d'errore |
 | Jacopo parla di "segnalazioni di spam" | Di solito sono report DMARC (regola 8): verifica con `casella` |
+| "Le colonne del mailer ... non corrispondono più ai locali" | Il funnel è stato ordinato senza K-N. Non scrivere nulla. Proponi a Jacopo di ripristinare la versione di prima (File > Cronologia versioni) o, con il suo ok, riallinea K-N: ogni locale riprende i valori K-N della riga che occupava prima dell'ordinamento (serve una lettura del funnel fatta prima). Verifica che ogni locale del registro abbia data e tipo dell'ultima mail e thread della Mail 1, scrivi K-N in una volta, rileggi e annota in cronologia. Ricordagli di ordinare selezionando A-N |
 
 ## Sviluppo
 

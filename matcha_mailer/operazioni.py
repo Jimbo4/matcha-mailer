@@ -129,12 +129,13 @@ class Session:
         missing = self.funnel.missing_mailer_columns()
         if missing:
             warnings.append("Nel funnel mancano le colonne: " + ", ".join(missing))
-        venues = self.funnel.load()
+        venues = self.load_checked()
         self.venues = venues
         replied: set[str] = set()
+        bounced: dict[str, date] = {}
         if self.mailbox:
             candidates = [
-                (v.name, v.email, v.mail_thread)
+                (v.name, v.email, self.message_ids_of(v))
                 for v in venues
                 if v.prob_code in ("10", "00") and (v.mail_step or "").strip() in ("1", "2")
             ]
@@ -146,14 +147,34 @@ class Session:
             if auto:
                 names = sorted(v.name for v in venues if v.name.lower() in auto)
                 warnings.append("Solo risposte automatiche, la sequenza prosegue: " + ", ".join(names))
-        actions = planner.plan(venues, today, replied, self.cfg.letter_pdf_link, revive)
+            if hasattr(self.mailbox, "bounced_venues"):
+                try:
+                    bounced = self.mailbox.bounced_venues(candidates, today)
+                except Exception as exc:  # noqa: BLE001
+                    warnings.append(f"Controllo mail non consegnate non riuscito ({exc}): "
+                                    "prima dei follow up controlla i rimbalzi con `casella`")
+        actions = planner.plan(venues, today, replied, self.cfg.letter_pdf_link, revive, self.registry.revived())
         sent = self.registry.already_sent()
         first = self.registry.first_mail()
+
+        def bounce_of(v: Venue) -> date | None:
+            """Day of a bounce that came after the last mail we sent (an older one was already dealt with)."""
+            day, last = bounced.get(v.name.lower()), calendario.parse(v.mail_last_sent)
+            return day if day and (not last or day >= last) else None
+
+        not_delivered = [f"{v.name} ({calendario.fmt(bounce_of(v))})" for v in venues if bounce_of(v)]
         for a in actions:
             when = sent.get((a.venue.name.lower(), a.kind))
             if a.selectable and when:
                 # sent before but the funnel was not updated: never propose it twice
                 a.status = f"Già inviata il {when} (registro locale): aggiorna il funnel"
+                a.kind, a.selectable = "info", False
+            bounce = bounce_of(a.venue)
+            waiting = a.kind == "info" and a.status.startswith("Mail ")  # "Mail 3 · break up dal ..."
+            if bounce and ((a.selectable and a.kind in ("mail2", "mail3")) or waiting):
+                # the last mail never arrived: the next one would bounce too (also when it is not due yet)
+                a.status = (f"Ultima mail non consegnata a {a.venue.email} (rimbalzo del {calendario.fmt(bounce)}): "
+                            "correggi la mail nel funnel, oppure chiudi la sequenza con `segna`")
                 a.kind, a.selectable = "info", False
             m1 = first.get(a.venue.name.lower())
             if m1 and a.kind in ("mail2", "mail3"):
@@ -161,7 +182,15 @@ class Session:
                 if m1.name_in_mail:
                     a.values["nome_locale"] = m1.name_in_mail
             render(a, self.texts)
+        if not_delivered:
+            warnings.append("Mail non consegnate (rimbalzo), niente follow up finché non correggi la mail nel funnel: "
+                            + ", ".join(not_delivered))
         return actions, warnings
+
+    def message_ids_of(self, v: Venue) -> list[str]:
+        """Message-ID of every mail sent to a venue (registry) plus the funnel's Mail thread: used to find
+        replies sent from another address, e.g. the owner answering the letter from a personal mail."""
+        return [*self.registry.ids_by_venue().get(v.name.lower(), []), v.mail_thread]
 
     def find(self, actions: list[Action], name: str, revived: bool = False) -> Action:
         """The action for a venue today. When there is none, explains why and what to do."""
@@ -225,7 +254,7 @@ class Session:
         msgid = msg["Message-ID"]
         name_used = action.values.get("nome_locale", "")
         self.registry.add(today, action.venue.name, action.kind, msg["To"], action.subject, msgid,
-                          name_used if name_used and name_used != action.venue.name else "")
+                          name_used if name_used and name_used != action.venue.name else "", revived=action.lost)
         try:
             changes = self.funnel.update_by_name(action.venue.name, self._funnel_changes(action, today, msgid))
         except Exception as exc:  # noqa: BLE001
@@ -254,6 +283,22 @@ class Session:
             changes["mail_thread"] = msgid
         return changes
 
+    def load_checked(self) -> list[Venue]:
+        """The funnel, after checking that the mailer columns still belong to their rows. If the sheet was
+        sorted without them, every row shows another venue's Mail step and dates: nothing may be sent or
+        written until they are realigned."""
+        venues = self.funnel.load()
+        wrong = misaligned(venues, self.registry.message_ids())
+        if wrong:
+            raise OperationError(
+                f"Le colonne del mailer (Mail step, Mail ultimo invio, Mail prossimo invio, Mail thread) non "
+                f"corrispondono più ai locali: {len(wrong)} righe hanno il thread di un altro locale "
+                f"(es. {'; '.join(wrong[:3])}). Succede quando il funnel viene ordinato senza selezionare "
+                "anche queste colonne. Non invio e non scrivo nulla: ripristina la versione del foglio di prima "
+                "dell'ordinamento (File > Cronologia versioni) oppure chiedi a Claude di riallinearle, poi "
+                "rilancia. Per ordinare il funnel seleziona tutte le colonne, dalla A alla N.")
+        return venues
+
     def write_history(self, today: date, title: str, bullets: list[str]) -> None:
         if bullets:
             cronologia.append_history(self.google, self.cfg.history_doc_id, calendario.fmt(today), title, bullets)
@@ -261,7 +306,7 @@ class Session:
     # ----------------------------------------------------------- funnel: candidati e attivazione
     def candidates(self, zone: str = "", include_outside: bool = False) -> list[Venue]:
         """Venues with an email and an empty Probabilità, never worked on: they can get `attiva`."""
-        venues = self.funnel.load()
+        venues = self.load_checked()
         self.venues = venues
         return [v for v in venues
                 if not planner.activation_problem(v)
@@ -273,7 +318,7 @@ class Session:
         Without confirm nothing is written. After writing, re-reads the funnel and logs the history."""
         res = ActivationResult()
         by_name: dict[str, list[Venue]] = {}
-        for v in self.funnel.load():
+        for v in self.load_checked():
             by_name.setdefault(norm(v.name), []).append(v)
         for name in names:
             rows = by_name.get(norm(name), [])
@@ -357,11 +402,22 @@ def register_whatsapp(session: Session, action: Action, today: date) -> None:
 STEP_NOTES = {"stop": "ha chiesto di non essere più contattato", "risposta": "ha risposto, sequenza chiusa"}
 
 
+def misaligned(venues: list[Venue], message_ids: dict[str, str]) -> list[str]:
+    """Rows whose Mail thread is a Message-ID we sent to another venue (registry): "Row (thread of Other)"."""
+    out = []
+    for v in venues:
+        owner = message_ids.get((v.mail_thread or "").strip().strip("<>").lower()) if v.mail_thread else None
+        if owner and norm(owner) != norm(v.name):
+            out.append(f"{v.name} (ha il thread di {owner})")
+    return out
+
+
 def close_sequence(session: Session, venue_name: str, value: str, today: date) -> list[Change]:
     """Sets 'Mail step' to stop/risposta for a venue (found by name) and logs it.
     For stop, 'Ultima azione fatta' becomes STOP too, so the venue stands out in the funnel."""
     if value not in STEP_NOTES:
         raise OperationError("Valore ammesso: stop oppure risposta")
+    session.load_checked()  # never write Mail step on a row whose mailer columns belong to another venue
     fields = {"mail_step": value, "mail_next": ""}  # no next mail: the sequence is closed
     if value == "stop":
         fields["last_action"] = planner.STOP_VALUE

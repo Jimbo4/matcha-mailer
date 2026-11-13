@@ -300,7 +300,7 @@ def cmd_risposte(args, ctx) -> int:
         if missing:
             raise CliError("Nel funnel non trovo: " + ", ".join(missing))
     candidates = [
-        (v.name, v.email, v.mail_thread)
+        (v.name, v.email, session.message_ids_of(v))
         for v in venues
         if v.email.strip() and (norm(v.name) in wanted if wanted else (v.mail_step or "").strip())
     ]

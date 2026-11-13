@@ -33,8 +33,8 @@ Gli invii seguono sempre due passaggi: prima una richiesta con l'anteprima, poi,
 | `prova "Locale"` | Manda la mail solo a te, con "[PROVA]" nell'oggetto | Solo una mail a te |
 | `invia "Locale" ...` | Senza `--conferma` mostra le anteprime e non invia | Sì, con `--conferma` |
 | `whatsapp "Locale"` | Testo e link WhatsApp pronti; `--inviato` registra l'invio | Sì, con `--inviato` |
-| `risposte` | Legge le risposte dei locali già scritti, senza segnarle come lette | No |
-| `casella` | Legge tutta la casella dal primo invio e classifica le mail: stop, segnalazioni spam, rimbalzi, risposte vere e automatiche, report DMARC. Legge solo intestazioni e inizio del testo, mai gli allegati | No |
+| `risposte` | Legge le risposte dei locali già scritti, senza segnarle come lette; trova anche chi risponde da un altro indirizzo, se risponde a una nostra mail | No |
+| `casella` | Legge tutta la casella dal primo invio e classifica le mail: stop, segnalazioni spam, rimbalzi (anche i "Recapito fallito" di Aruba, con l'indirizzo che non ha ricevuto e il motivo), risposte vere e automatiche, report DMARC. Legge solo intestazioni e inizio del testo, mai gli allegati | No |
 | `segna "Locale" stop` / `risposta` | Chiude la sequenza del locale | Sì, con `--conferma` |
 | `richiesta` | Esegue `locale\richieste\da_eseguire.txt` (è ciò che fa Esegui richiesta.bat) | Dipende dai comandi |
 | `password` | Salva la password Aruba (doppio clic su **Salva password Aruba.bat**) | Solo il portachiavi |
@@ -61,8 +61,10 @@ Opzioni di `anteprima`, `prova` e `invia`:
 | `50 - curioso` con mail | Mail 4 con la lettera d'intenti in PDF (esportata dal Doc a ogni invio) |
 | `50 - curioso` senza mail, con cellulare | WhatsApp con link alla lettera |
 | `50 - curioso` con solo numero fisso | Da chiamare |
-| `00 - perso` con mail, su tua richiesta (`--riattiva`) | Come `10 - nuovo`; la Probabilità resta `00` |
-| `90`, `00` senza richiesta, "TODO: da visitare" | Nessuna azione |
+| `00 - perso` con mail, su tua richiesta (`--riattiva`) | Come `10 - nuovo`; la Probabilità resta `00`. Mail 2 e 3 proseguono da sole perché il registro ricorda la riattivazione |
+| Segnato `00 - perso` a sequenza avviata (dopo la Mail 1 o 2) | Si ferma: la mail successiva parte solo se la chiedi tu (`--riattiva`) |
+| Ultima mail non consegnata (rimbalzo) | Niente follow up: `stato` lo segnala. Quando correggi la mail nel funnel il blocco si toglie da solo |
+| `90`, `99`, `00` senza richiesta, "TODO: da visitare" | Nessuna azione |
 
 - I giorni lavorativi escludono weekend, festività nazionali, Pasquetta e Sant'Ambrogio.
 - Oltre 20 mail a settimana il mailer chiede `--oltre-soglia`.
@@ -71,6 +73,7 @@ Opzioni di `anteprima`, `prova` e `invia`:
 - Soglia e pause si cambiano in `locale\config.ini`.
 - Il controllo delle risposte ignora le mail che partono da jacopo@: le copie dei nostri follow up arrivano in casella tramite il Cc a info@ e non vanno scambiate per risposte.
 - Quando un locale non ha azioni, il mailer spiega il motivo e cosa fare.
+- Il mailer segue solo questa tabella. Prima di proporti un invio Claude rilegge nel funnel lo stato di ogni locale (Probabilità, ultima azione, note, comprese quelle di Umberto) e toglie le mail che non hanno senso: per esempio la Mail 1 a chi ha già aderito (`90`, `99`) o il break up a chi si è detto interessato. Gli esclusi te li mostra con il motivo.
 
 ### Colonne del funnel
 
@@ -85,6 +88,8 @@ Opzioni di `anteprima`, `prova` e `invia`:
 | Note | Dopo una virgola un frammento tipo "Email automatica 1 inviata il 12/10/2026", che sostituisce il frammento precedente del mailer |
 
 Per togliere a mano un locale dalla sequenza basta scrivere `stop` o `risposta` in "Mail step".
+
+**Per ordinare il funnel seleziona tutte le colonne, dalla A alla N.** Se ordini solo quelle originali (A-J), le colonne del mailer restano ferme e ogni riga si ritrova lo stato di un altro locale. Il mailer se ne accorge (il "Mail thread" di una riga è di un altro locale secondo il registro) e si ferma senza inviare né scrivere nulla: ripristina la versione di prima da File > Cronologia versioni, oppure chiedi a Claude di riallinearle.
 
 ## Cartella
 

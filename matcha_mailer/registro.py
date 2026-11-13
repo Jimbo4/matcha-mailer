@@ -14,7 +14,9 @@ from pathlib import Path
 
 from matcha_mailer import calendario, config
 
-FIELDS = ["data", "ora", "locale", "azione", "destinatario", "oggetto", "message_id", "nome_in_mail"]
+# riattivato = "1" when the mail went to a "00 - perso" venue revived by Jacopo (--riattiva): only those
+# keep receiving Mail 2 and 3 while marked lost.
+FIELDS = ["data", "ora", "locale", "azione", "destinatario", "oggetto", "message_id", "nome_in_mail", "riattivato"]
 
 
 @dataclass
@@ -26,6 +28,7 @@ class Entry:
     subject: str
     message_id: str
     name_in_mail: str
+    revived: bool = False
 
 
 class Registry:
@@ -39,7 +42,7 @@ class Registry:
             return [
                 Entry(calendario.parse(r.get("data", "")), r.get("locale", "") or "", r.get("azione", "") or "",
                       r.get("destinatario", "") or "", r.get("oggetto", "") or "", r.get("message_id", "") or "",
-                      r.get("nome_in_mail", "") or "")
+                      r.get("nome_in_mail", "") or "", (r.get("riattivato", "") or "").strip() == "1")
                 for r in csv.DictReader(f)
             ]
 
@@ -58,7 +61,7 @@ class Registry:
                 w.writerow({k: r.get(k) or "" for k in FIELDS})
 
     def add(self, today: date, venue: str, kind: str, to: str, subject: str, message_id: str,
-            name_in_mail: str = "") -> None:
+            name_in_mail: str = "", revived: bool = False) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.path.exists():
             self._upgrade_header()
@@ -68,7 +71,7 @@ class Registry:
             if new:
                 w.writerow(FIELDS)
             w.writerow([calendario.fmt(today), datetime.now().strftime("%H:%M"), venue, kind, to, subject,
-                        message_id, name_in_mail])
+                        message_id, name_in_mail, "1" if revived else ""])
 
     # ------------------------------------------------------------ queries
     def sent_this_week(self, today: date) -> int:
@@ -86,6 +89,18 @@ class Registry:
     def message_ids(self) -> dict[str, str]:
         """Message-ID without <> lower-cased -> venue name."""
         return {e.message_id.strip().strip("<>").lower(): e.venue for e in self.entries() if e.message_id.strip()}
+
+    def ids_by_venue(self) -> dict[str, list[str]]:
+        """Venue name lower-cased -> Message-ID of every mail sent to it, oldest first (to find replies)."""
+        out: dict[str, list[str]] = {}
+        for e in self.entries():
+            if e.message_id.strip():
+                out.setdefault(e.venue.lower(), []).append(e.message_id.strip())
+        return out
+
+    def revived(self) -> set[str]:
+        """Lower-cased names of the "00 - perso" venues written to on Jacopo's request (--riattiva)."""
+        return {e.venue.lower() for e in self.entries() if e.revived}
 
     def first_day(self) -> date | None:
         days = [e.day for e in self.entries() if e.day]

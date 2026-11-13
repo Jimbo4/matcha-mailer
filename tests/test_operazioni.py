@@ -189,3 +189,9 @@ def test_parse_reply_keeps_only_new_text():
     assert parse_reply("Pub", h.as_bytes()).text.startswith("Ci interessa!\nChiamami")
     assert strip_quoted("Ok\nInviato da iPhone\nDa: Jacopo <jacopo@matchadating.it>") == "Ok"
     assert strip_quoted("Va bene\n-----Messaggio originale-----\nciao") == "Va bene"
+
+
+def test_search_criteria_with_every_message_id():
+    c = search_criteria("titolare@gmail.com", ["<a@m.it>", "<b@m.it>", "<a@m.it>", ""], "01-Oct-2026")
+    assert ["HEADER", "In-Reply-To", '"<b@m.it>"'] in c and ["HEADER", "References", '"<a@m.it>"'] in c
+    assert sum(1 for x in c if x[:2] == ["HEADER", "In-Reply-To"]) == 2
